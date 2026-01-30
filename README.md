@@ -1,70 +1,119 @@
-# Easy_Bill - Local-First Hotel Billing Software
+# Easy Bill - Local-First Hotel Billing Software
 
-## 1. Project Structure
+Easy Bill is a modern, high-performance Desktop POS (Point of Sale) application designed for hotels and restaurants. It follows a "Local-First" architecture, ensuring complete offline functionality with a robust SQLite database, while being future-proofed for mobile connectivity.
+
+Built with **Electron**, **React**, **Vite**, and **TypeScript**.
+
+## 🚀 Features
+
+*   **⚡ Fast Billing**: Keyboard-centric workflow. Search items, adjust quantities, and print bills without touching the mouse.
+*   **🍽️ Menu Management**: Manage Categories and Menu Items with ease.
+*   **🪑 Modular Table Management**: 
+    *   Enable/Disable table management based on business type (Dine-in vs. QSR).
+    *   Dynamic addition and deletion of tables.
+*   **⚙️ Customizable Settings**: Configure Hotel Name, Address, Printer Name, and Bill Footer.
+*   **🖨️ Silent Printing**: Supports thermal printers via ESC/POS commands (currently mocked for development).
+*   **📱 Mobile Ready**: Embedded Fastify server to allow future local mobile apps to connect and place orders.
+*   **🔒 Secure & Offline**: Data is stored locally in an encrypted SQLite database. Includes a licensing system with an offline grace period.
+
+## 🛠️ Tech Stack
+
+*   **Core**: [Electron](https://www.electronjs.org/) (v33), [React](https://react.dev/) (v18), [TypeScript](https://www.typescriptlang.org/)
+*   **Build Tool**: [Vite](https://vitejs.dev/) (v6)
+*   **Database**: [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) (High-performance synchronous SQLite)
+*   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+*   **Routing**: [React Router DOM](https://reactrouter.com/) (HashRouter for Electron compatibility)
+*   **Local Server**: [Fastify](https://fastify.dev/) (Embedded HTTP server)
+*   **Packaging**: [electron-builder](https://www.electron.build/)
+
+## 📂 Project Structure
 
 ```text
 Easy_Bill/
 ├── electron/
 │   ├── main/
-│   │   ├── index.ts            # Entry point for Electron Main Process
+│   │   ├── index.ts            # Main Process Entry (Window creation, IPC setup)
 │   │   ├── database/
-│   │   │   ├── db.ts           # Database connection (better-sqlite3)
-│   │   │   └── schema.sql      # SQL Schema
+│   │   │   ├── db.ts           # SQLite connection & Helper functions
+│   │   │   └── schema.sql      # Database Schema
 │   │   ├── ipc/
-│   │   │   └── printing.ts     # IPC handlers for printing
+│   │   │   └── printing.ts     # Printing Logic (ESC/POS)
 │   │   ├── license/
-│   │   │   └── validator.ts    # License check logic
+│   │   │   └── validator.ts    # License & Grace Period Logic
 │   │   └── server/
-│   │       └── api.ts          # Fastify server for local mobile connection
+│   │       └── api.ts          # Fastify Local Server (Port 3000)
 │   └── preload/
-│       └── index.ts            # Preload script (IPC Bridge)
-├── src/                        # Renderer Process (React + Vite)
-│   ├── assets/
-│   ├── components/
-│   ├── hooks/
-│   ├── App.tsx
-│   └── main.tsx
+│       └── index.ts            # Context Bridge (Secure API exposure)
+├── src/                        # Renderer Process (Frontend)
+│   ├── components/             # React Components (Billing, Dashboard, Settings)
+│   ├── App.tsx                 # Main Layout & Routing
+│   ├── main.tsx                # React Entry Point
+│   └── index.css               # Tailwind Imports
+├── dist/                       # Production Build Output (Executables)
 ├── package.json
-├── tsconfig.json
-└── vite.config.ts
+└── vite.config.ts              # Vite & Electron Build Config
 ```
 
-## 2. Core Dependencies
+## ⚙️ Installation & Setup
 
-### SQLite Connectivity
-*   `better-sqlite3`: Fastest SQLite driver for Node.js, synchronous (good for local desktop apps).
-*   `kysely` or `drizzle-orm`: Lightweight SQL query builders/ORMs (optional but recommended over raw SQL).
+### Prerequisites
+*   **Node.js**: v18 or higher (v20+ recommended).
+*   **Windows Build Tools**: Required for compiling `better-sqlite3`.
+    *   Run as Administrator: `npm install --global --production windows-build-tools`
+    *   OR ensure "Desktop development with C++" is installed via Visual Studio Installer.
 
-### Silent Printing
-*   `electron-pos-printer`: Easy wrapper for thermal printers (supports HTML/CSS to image/PDF).
-*   OR `escpos` + `escpos-usb` / `escpos-network`: For raw ESC/POS command control (more robust for specific hardware).
+### Development
 
-### License Key Validation
-*   `node-machine-id`: To generate a unique device fingerprint.
-*   `axios`: For checking against the remote verification server.
-*   `jsonwebtoken`: If using JWTs for offline license tokens.
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/your-username/Easy_Bill.git
+    cd Easy_Bill
+    ```
 
-### Electron-to-React Communication
-*   Built-in `ipcMain` and `ipcRenderer`.
+2.  **Install Dependencies**
+    ```bash
+    npm install
+    ```
 
-### Local Server
-*   `fastify`: Low overhead web framework.
-*   `qrcode`: To generate QR codes for the local IP.
+3.  **Rebuild Native Modules** (Important for SQLite)
+    ```bash
+    npm run postinstall
+    ```
 
-## 4. Network Strategy for Mobile
+4.  **Run in Development Mode**
+    ```bash
+    npm run dev
+    ```
 
-To allow a mobile app to connect:
-1.  **Internal Server**: Start a `fastify` server inside the Electron Main process on a specific port (e.g., 3000).
-2.  **Discovery**: Use `internal-ip` package to find the desktop's LAN IP address.
-3.  **Pairing**: Generate a QR code in the React UI containing `http://<LAN_IP>:3000`. The mobile app scans this to know where to connect.
-4.  **Security**: Implement a simple pairing token or PIN displayed on the desktop that must be entered on the mobile app to authorize the connection.
+### Building for Production
 
-## 5. Implementation Roadmap
+To create a standalone Windows executable (`.exe`):
 
-1.  **Setup**: `npm init`, install Electron, Vite, React. Configure `vite-plugin-electron`.
-2.  **Database**: Set up `better-sqlite3`. Create `schema.sql` and run migrations on startup.
-3.  **IPC Bridge**: Configure `preload.ts` to expose safe APIs (e.g., `window.api.printBill`).
-4.  **Printing**: Implement the `printBill` handler in Main process using `escpos` or `electron-pos-printer`. Test with a dummy printer or console output.
-5.  **UI**: Build the POS interface in React. Connect it to the database via IPC.
-6.  **Licensing**: Implement the startup check. Store license status in a secure local file or encrypted DB field.
-7.  **Mobile Sync**: Add the Fastify server and QR code generation.
+```bash
+npm run build
+```
+
+The output files (Installer and Portable EXE) will be located in the `dist/` folder.
+
+## ⌨️ Keyboard Shortcuts (Billing Page)
+
+*   **Search**: Auto-focused on load. Type to filter items.
+*   **Arrow Up/Down**: Navigate through the menu list.
+*   **Enter**: 
+    *   If item selected: Open Quantity Popup.
+    *   Inside Popup: Confirm Quantity.
+    *   If search empty & cart has items: **Print Bill**.
+*   **Esc**: Close Quantity Popup.
+
+## 🐛 Troubleshooting
+
+**`better-sqlite3` / `node-gyp` errors:**
+If you see errors related to `distutils` or `msvs_version`, ensure you have Python installed and the Visual Studio Build Tools are correctly set up. You may need to run:
+`npm config set msvs_version 2022` (or your VS version).
+
+**Navigation not working in Build:**
+Ensure `HashRouter` is used in `App.tsx` (already configured), as Electron serves files from the local filesystem which doesn't support standard browser history routing.
+
+## 📄 License
+
+Proprietary / Commercial.
