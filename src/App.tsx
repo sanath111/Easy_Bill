@@ -1,13 +1,34 @@
-import { HashRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import { LayoutDashboard, Receipt, Settings, FileText } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { HashRouter as Router, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { LayoutDashboard, Receipt, Settings, FileText, Lock } from 'lucide-react';
 
 // Components
 import Dashboard from './components/Dashboard';
 import Billing from './components/Billing';
 import Reports from './components/Reports';
 import SettingsPage from './components/Settings';
+import Activation from './components/Activation';
 
 function App() {
+  const [licenseStatus, setLicenseStatus] = useState<string>('checking');
+
+  useEffect(() => {
+    const check = async () => {
+      // @ts-ignore
+      const status = await window.api.getLicenseStatus();
+      setLicenseStatus(status);
+    };
+    check();
+  }, []);
+
+  if (licenseStatus === 'checking') {
+    return <div className="flex h-screen items-center justify-center">Loading...</div>;
+  }
+
+  if (licenseStatus === 'expired') {
+    return <Activation onActivated={() => setLicenseStatus('active')} />;
+  }
+
   return (
     <Router>
       <div className="flex h-screen bg-gray-100">
@@ -34,6 +55,15 @@ function App() {
               Settings
             </Link>
           </nav>
+          
+          {licenseStatus === 'grace_period' && (
+            <div className="absolute bottom-0 w-64 p-4 bg-yellow-100 border-t border-yellow-200">
+              <p className="text-xs text-yellow-800 font-semibold flex items-center">
+                <Lock className="w-3 h-3 mr-1" />
+                Offline Mode (Grace Period)
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Main Content */}
@@ -43,6 +73,7 @@ function App() {
             <Route path="/billing" element={<Billing />} />
             <Route path="/reports" element={<Reports />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </div>
       </div>

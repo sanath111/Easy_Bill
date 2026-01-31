@@ -24,6 +24,14 @@ contextBridge.exposeInMainWorld('api', {
   
   // Licensing
   getLicenseStatus: () => ipcRenderer.invoke('license:status'),
+  // UPDATED: Accept object with key and optional token
+  activateLicense: (data: { key: string, token?: string }) => ipcRenderer.invoke('license:activate', data),
+  
+  // Auth
+  openGoogleLogin: () => ipcRenderer.invoke('auth:open-google-login'),
+  onSessionReceived: (callback: (session: any) => void) => {
+    ipcRenderer.on('auth:session-received', (_, session) => callback(session));
+  },
   
   // Network
   getLocalIp: () => ipcRenderer.invoke('network:get-ip'),

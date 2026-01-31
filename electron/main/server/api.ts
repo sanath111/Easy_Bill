@@ -8,6 +8,39 @@ export async function startLocalServer() {
     return { message: 'Easy_Bill Desktop Server is Running' };
   });
 
+  // Auth Callback Bridge
+  // Supabase redirects here with #access_token=...
+  // We serve a page that extracts the hash and redirects to easybill://
+  server.get('/auth/callback', async (_request, reply) => {
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Authenticating...</title>
+        <script>
+          // Get the hash from the URL (contains access_token)
+          const hash = window.location.hash;
+          if (hash) {
+            // Redirect to the custom protocol
+            window.location.href = 'easybill://auth/callback' + hash;
+            // Close the window after a short delay
+            setTimeout(() => {
+              window.close();
+            }, 1000);
+          } else {
+            document.body.innerHTML = 'Authentication failed. No token found.';
+          }
+        </script>
+      </head>
+      <body>
+        <h1>Authenticating Easy Bill...</h1>
+        <p>Please wait while we redirect you back to the application.</p>
+      </body>
+      </html>
+    `;
+    reply.type('text/html').send(html);
+  });
+
   server.post('/mobile/order', async (request, _reply) => {
     // Handle order from mobile
     const orderData = request.body;
