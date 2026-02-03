@@ -3,17 +3,17 @@ import * as path from 'path';
 import { 
   initDatabase, 
   getTables, 
-  addTable,
-  deleteTable,
+  addTable, 
+  deleteTable, 
   getCategories, 
-  addCategory,
-  deleteCategory,
+  addCategory, 
+  deleteCategory, 
   getMenuItems, 
   addMenuItem, 
   deleteMenuItem, 
   getSettings, 
   saveSettings, 
-  createOrder 
+  createOrder
 } from './database/db';
 import { setupPrintingHandlers } from './ipc/printing';
 import { checkLicense } from './license/validator';
@@ -30,12 +30,17 @@ async function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false, // Don't show until maximized
     webPreferences: {
       preload: path.join(__dirname, '../../dist-electron/preload/index.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
   });
+
+  // Maximize the window
+  mainWindow.maximize();
+  mainWindow.show();
 
   // Remove the top menu
   mainWindow.setMenu(null);
@@ -55,15 +60,15 @@ app.whenReady().then(async () => {
   // 2. Check License
   const licenseStatus = await checkLicense();
   console.log('License Status:', licenseStatus);
-  
+
   // 3. Setup IPC Handlers
   setupPrintingHandlers();
-  
+
   // Database IPC
   ipcMain.handle('db:get-tables', () => getTables());
   ipcMain.handle('db:add-table', (_, table) => addTable(table));
   ipcMain.handle('db:delete-table', (_, id) => deleteTable(id));
-  
+
   ipcMain.handle('db:get-categories', () => getCategories());
   ipcMain.handle('db:add-category', (_, name) => addCategory(name));
   ipcMain.handle('db:delete-category', (_, id) => deleteCategory(id));
@@ -71,14 +76,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('db:get-menu-items', () => getMenuItems());
   ipcMain.handle('db:add-menu-item', (_, item) => addMenuItem(item));
   ipcMain.handle('db:delete-menu-item', (_, id) => deleteMenuItem(id));
-  
+
   ipcMain.handle('db:get-settings', () => getSettings());
   ipcMain.handle('db:save-settings', (_, settings) => saveSettings(settings));
-  
+
   ipcMain.handle('db:create-order', (_, tableId) => createOrder(tableId));
 
   ipcMain.handle('license:status', () => licenseStatus);
-  
+
   // 4. Start Local Mobile Server
   startLocalServer();
 
