@@ -7,10 +7,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      // @ts-ignore
       const t = await window.api.getTables();
       setTables(t);
-      // @ts-ignore
       const s = await window.api.getSettings();
       setSettings(s);
     };

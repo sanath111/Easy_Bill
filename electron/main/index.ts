@@ -13,7 +13,13 @@ import {
   deleteMenuItem, 
   getSettings, 
   saveSettings, 
-  createOrder
+  createOrder,
+  saveOrder,
+  closeOrder,
+  getOpenOrder,
+  getPendingOrders,
+  getSalesReport,
+  getItemSalesReport
 } from './database/db';
 import { setupPrintingHandlers } from './ipc/printing';
 import { checkLicense } from './license/validator';
@@ -81,6 +87,14 @@ app.whenReady().then(async () => {
   ipcMain.handle('db:save-settings', (_, settings) => saveSettings(settings));
 
   ipcMain.handle('db:create-order', (_, tableId) => createOrder(tableId));
+  ipcMain.handle('db:save-order', (_, data) => saveOrder(data.orderId, data.items, data.tableId));
+  ipcMain.handle('db:close-order', (_, data) => closeOrder(data.orderId, data.total, data.items, data.paymentMethod, data.tableId));
+  ipcMain.handle('db:get-open-order', (_, tableId) => getOpenOrder(tableId));
+  ipcMain.handle('db:get-pending-orders', () => getPendingOrders());
+
+  // Reports IPC
+  ipcMain.handle('db:get-sales-report', (_, range) => getSalesReport(range.startDate, range.endDate));
+  ipcMain.handle('db:get-item-sales-report', (_, range) => getItemSalesReport(range.startDate, range.endDate));
 
   ipcMain.handle('license:status', () => licenseStatus);
 

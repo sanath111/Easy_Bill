@@ -6,6 +6,7 @@ const Billing = () => {
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
   const [tables, setTables] = useState<any[]>([]);
   const [settings, setSettings] = useState<any>({});
+  const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredItems, setFilteredItems] = useState<any[]>([]);
@@ -16,21 +17,34 @@ const Billing = () => {
   const [pendingItem, setPendingItem] = useState<any>(null);
   const [quantity, setQuantity] = useState(1);
   
+  // Table Selection Popup State
+  const [showTablePopup, setShowTablePopup] = useState(false);
+  const [tableInput, setTableInput] = useState('0');
+
+  // Pending Bills State
+  const [pendingBills, setPendingBills] = useState<any[]>([]);
+  const [pendingSearchQuery, setPendingSearchQuery] = useState('');
+  const [filteredPendingBills, setFilteredPendingBills] = useState<any[]>([]);
+  const [pendingSelectedIndex, setPendingSelectedIndex] = useState(-1);
+  
   const searchInputRef = useRef<HTMLInputElement>(null);
   const quantityInputRef = useRef<HTMLInputElement>(null);
+  const tableInputRef = useRef<HTMLInputElement>(null);
+  const pendingSearchInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const loadData = async () => {
-      // @ts-ignore
       const items = await window.api.getMenuItems();
       setMenuItems(items);
       setFilteredItems(items);
-      // @ts-ignore
+      
       const t = await window.api.getTables();
       setTables(t);
-      // @ts-ignore
+      
       const s = await window.api.getSettings();
       setSettings(s);
+
+      loadPendingBills();
     };
     loadData();
     
@@ -38,6 +52,43 @@ const Billing = () => {
       searchInputRef.current.focus();
     }
   }, []);
+
+  const loadPendingBills = async () => {
+    const orders = await window.api.getPendingOrders();
+    setPendingBills(orders || []);
+  };
+
+  useEffect(() => {
+    if (!pendingSearchQuery) {
+      setFilteredPendingBills(pendingBills);
+    } else {
+      const lower = pendingSearchQuery.toLowerCase();
+      const filtered = pendingBills.filter(order => 
+        (order.table_name && order.table_name.toLowerCase().includes(lower)) ||
+        order.id.toString().includes(lower) ||
+        (order.table_id === null && "takeaway".includes(lower))
+      );
+      setFilteredPendingBills(filtered);
+    }
+    setPendingSelectedIndex(-1); // Reset selection on search change
+  }, [pendingSearchQuery, pendingBills]);
+
+  // Logic: Auto-load order ONLY for specific tables.
+  useEffect(() => {
+    const loadTableOrder = async () => {
+      if (selectedTable && selectedTable > 0) {
+        const order = await window.api.getOpenOrder(selectedTable);
+        if (order) {
+          loadOrderToCart(order);
+        } else {
+          setCurrentOrderId(null);
+          setCart([]);
+        }
+      }
+    };
+    
+    loadTableOrder();
+  }, [selectedTable]);
 
   useEffect(() => {
     if (!searchQuery) {
@@ -54,15 +105,45 @@ const Billing = () => {
     }
   }, [searchQuery, menuItems]);
 
-  // Focus quantity input when popup opens
+  // Focus Management
   useEffect(() => {
-    if (showQuantityPopup && quantityInputRef.current) {
-      quantityInputRef.current.focus();
-      quantityInputRef.current.select();
-    } else if (!showQuantityPopup && searchInputRef.current) {
-      searchInputRef.current.focus();
+    if (showQuantityPopup) {
+      setTimeout(() => {
+        if (quantityInputRef.current) {
+          quantityInputRef.current.focus();
+          quantityInputRef.current.select();
+        }
+      }, 50);
+    } else if (showTablePopup) {
+      setTimeout(() => {
+        if (tableInputRef.current) {
+          tableInputRef.current.focus();
+          tableInputRef.current.select();
+        }
+      }, 50);
+    } else {
+      // Only return focus to main search if we are NOT in pending search
+      if (document.activeElement !== pendingSearchInputRef.current) {
+        setTimeout(() => {
+          if (searchInputRef.current) {
+            searchInputRef.current.focus();
+          }
+        }, 50);
+      }
     }
-  }, [showQuantityPopup]);
+  }, [showQuantityPopup, showTablePopup]);
+
+  const handleTableChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = e.target.value;
+    const newTableId = val === '' ? null : Number(val);
+    
+    if (newTableId === 0 || newTableId === null) {
+      setCurrentOrderId(null);
+      setCart([]);
+    }
+    
+    setSelectedTable(newTableId);
+  };
 
   const initiateAddToCart = (item: any) => {
     setPendingItem(item);
@@ -94,33 +175,151 @@ const Billing = () => {
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
 
-  const handlePrint = async () => {
-    if (cart.length === 0) return;
-
-    if (settings.enable_tables === 'true' && !selectedTable) {
-      alert('Please select a table first');
-      return;
-    }
+  const refreshAfterAction = async () => {
+    setCart([]);
+    setSelectedTable(null);
+    setCurrentOrderId(null);
     
-    const billData = {
-      items: cart,
-      total: calculateTotal(),
-      tableId: selectedTable
-    };
+    const t = await window.api.getTables();
+    setTables(t);
+    loadPendingBills();
+  };
 
-    // @ts-ignore
-    const result = await window.api.printBill(billData);
-    if (result.success) {
-      console.log('Bill printed successfully!');
-      setCart([]);
-      setSelectedTable(null);
-    } else {
-      alert('Printing failed: ' + result.error);
+  const handleSave = async () => {
+    try {
+      if (cart.length === 0) return;
+
+      if (currentOrderId) {
+        await window.api.saveOrder({
+          orderId: currentOrderId,
+          items: cart,
+          tableId: selectedTable === 0 ? null : selectedTable
+        });
+        await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        refreshAfterAction();
+        return;
+      }
+
+      if (selectedTable && selectedTable > 0) {
+        const order = await window.api.createOrder(selectedTable);
+        await window.api.saveOrder({
+          orderId: order.id,
+          items: cart,
+          tableId: selectedTable
+        });
+        await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        refreshAfterAction();
+        return;
+      }
+
+      setTableInput('0');
+      setShowTablePopup(true);
+    } catch (error: any) {
+      alert('Error saving order: ' + error.message);
+      console.error(error);
+    }
+  };
+
+  const confirmTablePopup = async () => {
+    try {
+      const tableId = parseInt(tableInput);
+      
+      if (tableId !== 0) {
+        const tableExists = tables.find(t => t.id === tableId);
+        if (!tableExists) {
+          alert('Table does not exist!');
+          return;
+        }
+      }
+
+      const order = await window.api.createOrder(tableId === 0 ? null : tableId);
+      
+      await window.api.saveOrder({
+        orderId: order.id,
+        items: cart,
+        tableId: tableId === 0 ? null : tableId
+      });
+
+      await window.api.printBill({ 
+        items: cart, 
+        tableId: tableId === 0 ? null : tableId, 
+        type: 'KOT', 
+        total: 0 
+      });
+
+      setShowTablePopup(false);
+      refreshAfterAction();
+    } catch (error: any) {
+      alert('Error confirming order: ' + error.message);
+    }
+  };
+
+  const handlePrint = async () => {
+    try {
+      if (cart.length === 0) return;
+
+      if (settings.enable_tables === 'true' && selectedTable === null) {
+        alert('Please select a table first');
+        return;
+      }
+      
+      const total = calculateTotal();
+      let orderId = currentOrderId;
+      const dbTableId = selectedTable === 0 ? null : selectedTable;
+
+      if (!orderId) {
+        const order = await window.api.createOrder(dbTableId);
+        orderId = order.id;
+      }
+
+      await window.api.closeOrder({
+        orderId: orderId!,
+        total: total,
+        items: cart,
+        paymentMethod: 'Cash',
+        tableId: dbTableId
+      });
+
+      const billData = {
+        items: cart,
+        total: total,
+        tableId: dbTableId
+      };
+
+      const result = await window.api.printBill(billData);
+      
+      if (result.success) {
+        console.log('Bill printed successfully!');
+        refreshAfterAction();
+      } else {
+        alert('Printing failed: ' + result.error);
+      }
+    } catch (error: any) {
+      alert('Error printing bill: ' + error.message);
+      console.error(error);
     }
   };
 
   const handleMainKeyDown = (e: React.KeyboardEvent) => {
-    if (showQuantityPopup) return; // Let popup handle its own keys
+    if (showQuantityPopup || showTablePopup) return;
+
+    // F2: Focus Pending Orders
+    if (e.key === 'F2') {
+      e.preventDefault();
+      if (pendingSearchInputRef.current) {
+        pendingSearchInputRef.current.focus();
+        if (filteredPendingBills.length > 0) {
+          setPendingSelectedIndex(0);
+        }
+      }
+      return;
+    }
+
+    if (e.key === 'F4') {
+      e.preventDefault();
+      handleSave();
+      return;
+    }
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
@@ -142,12 +341,37 @@ const Billing = () => {
       if (selectedIndex !== -1 && filteredItems.length > 0) {
         initiateAddToCart(filteredItems[selectedIndex]);
       } else if (searchQuery === '' && cart.length > 0) {
-        handlePrint();
+        handleSave();
       }
     }
   };
 
+  const handlePendingKeyDown = (e: React.KeyboardEvent) => {
+    if (filteredPendingBills.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setPendingSelectedIndex(prev => (prev + 1) % filteredPendingBills.length);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setPendingSelectedIndex(prev => (prev - 1 + filteredPendingBills.length) % filteredPendingBills.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (pendingSelectedIndex !== -1) {
+        loadOrderToCart(filteredPendingBills[pendingSelectedIndex]);
+        // Return focus to main search
+        if (searchInputRef.current) searchInputRef.current.focus();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      if (searchInputRef.current) searchInputRef.current.focus();
+      setPendingSelectedIndex(-1);
+    }
+  };
+
   const handlePopupKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       setQuantity(prev => prev + 1);
@@ -164,23 +388,47 @@ const Billing = () => {
     }
   };
 
+  const handleTablePopupKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmTablePopup();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowTablePopup(false);
+    }
+  };
+
+  const loadOrderToCart = (order: any) => {
+    const normalizedItems = order.items.map((item: any) => ({
+      ...item,
+      name: item.item_name || item.name,
+      id: item.item_id || item.id
+    }));
+
+    setCurrentOrderId(order.id);
+    setCart(normalizedItems);
+    setSelectedTable(order.table_id === null ? 0 : order.table_id);
+  };
+
   return (
-    <div className="flex h-full gap-6 relative" onKeyDown={handleMainKeyDown}>
+    <div className="flex h-full gap-4 relative bg-gray-200 p-4 overflow-hidden" onKeyDown={handleMainKeyDown}>
       
       {/* Quantity Popup Overlay */}
       {showQuantityPopup && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-50">
           <div 
-            className="bg-white rounded-xl shadow-2xl p-6 w-80 transform transition-all scale-100"
+            className="bg-white border-2 border-black p-6 w-80 shadow-none"
             onKeyDown={handlePopupKeyDown}
           >
-            <h3 className="text-lg font-bold text-gray-800 mb-2">Add Item</h3>
-            <p className="text-gray-600 mb-4">{pendingItem?.name}</p>
+            <h3 className="text-lg font-bold text-black mb-2 border-b border-gray-300 pb-2">Add Item</h3>
+            <p className="text-black mb-4 font-mono">{pendingItem?.name}</p>
             
             <div className="flex items-center justify-center gap-4 mb-6">
               <button 
                 onClick={() => setQuantity(q => Math.max(1, q - 1))}
-                className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-600"
+                className="w-8 h-8 border border-black bg-gray-100 hover:bg-gray-200 flex items-center justify-center font-bold text-black"
               >
                 -
               </button>
@@ -188,13 +436,13 @@ const Billing = () => {
                 ref={quantityInputRef}
                 type="number"
                 min="1"
-                className="w-20 text-center text-2xl font-bold border-b-2 border-blue-500 focus:outline-none"
+                className="w-20 text-center text-xl font-bold border border-black p-1 focus:outline-none focus:ring-1 focus:ring-black"
                 value={quantity}
                 onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
               />
               <button 
                 onClick={() => setQuantity(q => q + 1)}
-                className="w-10 h-10 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-xl font-bold text-gray-600"
+                className="w-8 h-8 border border-black bg-gray-100 hover:bg-gray-200 flex items-center justify-center font-bold text-black"
               >
                 +
               </button>
@@ -203,128 +451,256 @@ const Billing = () => {
             <div className="flex gap-3">
               <button 
                 onClick={() => setShowQuantityPopup(false)}
-                className="flex-1 py-2 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                className="flex-1 py-1 border border-black text-black hover:bg-gray-100"
               >
-                Cancel (Esc)
+                Cancel
               </button>
               <button 
                 onClick={confirmAddToCart}
-                className="flex-1 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-semibold"
+                className="flex-1 py-1 border border-black bg-black text-white hover:bg-gray-800"
               >
-                Add (Enter)
+                Add
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Menu Selection */}
-      <div className="flex-1 bg-white p-6 rounded-lg shadow-md flex flex-col">
-        <h2 className="text-xl font-bold mb-4">Menu</h2>
-        
-        <div className="mb-4 relative">
-          <input
-            ref={searchInputRef}
-            type="text"
-            className="w-full p-3 border rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Search items..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            disabled={showQuantityPopup}
-          />
-          {searchQuery === '' && cart.length > 0 && (
-            <div className="absolute right-3 top-3 text-gray-400 text-sm">
-              Press Enter to Print
+      {/* Table Selection Popup */}
+      {showTablePopup && (
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div 
+            className="bg-white border-2 border-black p-6 w-80 shadow-none"
+            onKeyDown={handleTablePopupKeyDown}
+          >
+            <h3 className="text-lg font-bold text-black mb-4 border-b border-gray-300 pb-2">Enter Table Number</h3>
+            <p className="text-sm text-gray-600 mb-4 font-mono">0 = Takeaway</p>
+            
+            <input
+              ref={tableInputRef}
+              type="number"
+              className="w-full p-2 border border-black text-2xl font-bold text-center mb-6 focus:outline-none focus:ring-1 focus:ring-black"
+              value={tableInput}
+              onChange={(e) => setTableInput(e.target.value)}
+            />
+
+            <div className="flex gap-3">
+              <button 
+                onClick={() => setShowTablePopup(false)}
+                className="flex-1 py-1 border border-black text-black hover:bg-gray-100"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmTablePopup}
+                className="flex-1 py-1 border border-black bg-black text-white hover:bg-gray-800"
+              >
+                Print KOT
+              </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Left Column: Menu & Pending Bills */}
+      <div className="flex-1 flex flex-col gap-4 overflow-hidden">
+        
+        {/* Menu Selection */}
+        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden">
+          <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-1 flex-shrink-0">Menu Search</h2>
+          
+          <div className="mb-2 relative flex-shrink-0">
+            <input
+              ref={searchInputRef}
+              type="text"
+              className="w-full p-2 border border-gray-400 text-lg focus:outline-none focus:border-black font-mono"
+              placeholder="Type to search..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              disabled={showQuantityPopup || showTablePopup}
+            />
+            {searchQuery === '' && cart.length > 0 && (
+              <div className="absolute right-3 top-3 text-gray-500 text-xs font-bold">
+                [ENTER] to Save
+              </div>
+            )}
+          </div>
+
+          {/* Only show list if searching */}
+          {searchQuery && (
+            <div className="flex-1 overflow-y-auto border border-gray-200 bg-gray-50">
+              <div className="flex flex-col">
+                {filteredItems.map((item, index) => (
+                  <div 
+                    key={item.id} 
+                    onClick={() => initiateAddToCart(item)}
+                    className={`p-2 border-b border-gray-200 cursor-pointer flex justify-between items-center font-mono text-sm ${
+                      index === selectedIndex 
+                        ? 'bg-black text-white' 
+                        : 'hover:bg-gray-200 text-black'
+                    }`}
+                  >
+                    <div>
+                      <span className="font-bold">{item.name}</span>
+                      <span className={`ml-2 text-xs ${index === selectedIndex ? 'text-gray-300' : 'text-gray-500'}`}>
+                        {item.category_name}
+                      </span>
+                    </div>
+                    <span className="font-bold">₹{item.price.toFixed(2)}</span>
+                  </div>
+                ))}
+              </div>
+              {filteredItems.length === 0 && (
+                <p className="text-center text-gray-500 mt-4 font-mono">No items found.</p>
+              )}
+            </div>
+          )}
+          
+          {!searchQuery && (
+             <div className="flex-1 flex items-center justify-center text-gray-400 font-mono text-sm">
+               Start typing to search...
+             </div>
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto">
-          <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredItems.map((item, index) => (
-              <div 
-                key={item.id} 
-                onClick={() => initiateAddToCart(item)}
-                className={`p-4 border rounded-lg cursor-pointer transition-colors ${
-                  index === selectedIndex 
-                    ? 'bg-blue-100 border-blue-500 ring-2 ring-blue-300' 
-                    : 'hover:bg-blue-50 border-gray-200'
-                }`}
-              >
-                <h3 className="font-semibold">{item.name}</h3>
-                <p className="text-gray-600">₹{item.price.toFixed(2)}</p>
-                <p className="text-xs text-gray-400">{item.category_name}</p>
-              </div>
-            ))}
+        {/* Pending Bills Section */}
+        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden">
+          <div className="flex justify-between items-center border-b border-gray-300 pb-1 mb-3 flex-shrink-0">
+            <h2 className="text-lg font-bold text-black uppercase tracking-wide">Pending Orders <span className="text-xs text-gray-500">(F2)</span></h2>
+            <input 
+              ref={pendingSearchInputRef}
+              type="text" 
+              placeholder="Search Table/ID..." 
+              className="p-1 border border-gray-400 text-xs font-mono w-40 focus:outline-none focus:border-black focus:bg-yellow-50"
+              value={pendingSearchQuery}
+              onChange={(e) => setPendingSearchQuery(e.target.value)}
+              onKeyDown={handlePendingKeyDown}
+            />
           </div>
-          {filteredItems.length === 0 && (
-            <p className="text-center text-gray-500 mt-10">No items found.</p>
-          )}
+          
+          <div className="flex-1 overflow-y-auto bg-gray-50 border border-gray-200">
+            {filteredPendingBills.length === 0 ? (
+              <p className="text-gray-400 text-center mt-4 font-mono text-sm">No pending orders</p>
+            ) : (
+              <table className="w-full text-sm font-mono text-left border-collapse">
+                <thead className="bg-gray-200 text-black font-bold sticky top-0">
+                  <tr>
+                    <th className="p-2 border-b border-gray-400">Table</th>
+                    <th className="p-2 border-b border-gray-400">Token</th>
+                    <th className="p-2 border-b border-gray-400">Items</th>
+                    <th className="p-2 border-b border-gray-400">Time</th>
+                    <th className="p-2 border-b border-gray-400 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPendingBills.map(order => (
+                    <tr 
+                      key={order.id}
+                      onClick={() => loadOrderToCart(order)}
+                      className={`cursor-pointer border-b border-gray-300 ${
+                        currentOrderId === order.id 
+                          ? 'bg-gray-300' 
+                          : filteredPendingBills.indexOf(order) === pendingSelectedIndex 
+                            ? 'bg-black text-white' 
+                            : 'hover:bg-gray-200'
+                      }`}
+                    >
+                      <td className="p-2 font-bold">{order.table_name || 'TKWY'}</td>
+                      <td className="p-2">#{order.id}</td>
+                      <td className="p-2">{order.items.length}</td>
+                      <td className="p-2 text-xs">
+                        {new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                      </td>
+                      <td className="p-2 font-bold text-right">₹{order.total_amount.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Cart & Billing */}
-      <div className="w-96 bg-white p-6 rounded-lg shadow-md flex flex-col">
-        <h2 className="text-xl font-bold mb-4">Current Order</h2>
+      {/* Right Column: Cart & Billing */}
+      <div className="w-96 bg-white border border-gray-400 p-4 flex flex-col overflow-hidden">
+        <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-1 flex-shrink-0">Current Bill</h2>
         
         {settings.enable_tables === 'true' && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-gray-700 mb-1">Select Table</label>
+          <div className="mb-3 flex-shrink-0">
             <select 
-              className="w-full p-2 border rounded-md"
-              value={selectedTable || ''}
-              onChange={(e) => setSelectedTable(Number(e.target.value))}
-              disabled={showQuantityPopup}
+              className="w-full p-1 border border-gray-400 bg-gray-50 text-sm font-mono focus:outline-none"
+              value={selectedTable === null ? '' : selectedTable}
+              onChange={handleTableChange}
+              disabled={showQuantityPopup || showTablePopup}
             >
-              <option value="">Choose a table...</option>
+              <option value="">Select Table...</option>
+              <option value="0">Takeaway</option>
               {tables.map(t => (
-                <option key={t.id} value={t.id}>{t.name}</option>
+                <option key={t.id} value={t.id}>
+                  {t.name} {t.status === 'occupied' ? '(Occ)' : ''}
+                </option>
               ))}
             </select>
           </div>
         )}
 
-        <div className="flex-1 overflow-y-auto mb-4">
+        <div className="flex-1 overflow-y-auto mb-3 border border-gray-200 bg-gray-50 p-2">
           {cart.length === 0 ? (
-            <p className="text-gray-400 text-center mt-10">Cart is empty</p>
+            <p className="text-gray-400 text-center mt-10 font-mono text-sm">Cart is empty</p>
           ) : (
-            cart.map(item => (
-              <div key={item.id} className="flex justify-between items-center py-2 border-b">
-                <div>
-                  <p className="font-medium">{item.name}</p>
-                  <p className="text-sm text-gray-500">{item.quantity} x ₹{item.price}</p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="font-bold">₹{(item.price * item.quantity).toFixed(2)}</span>
-                  <button 
-                    onClick={() => removeFromCart(item.id)}
-                    className="text-red-500 hover:text-red-700 px-2"
-                    disabled={showQuantityPopup}
-                  >
-                    ×
-                  </button>
-                </div>
-              </div>
-            ))
+            <table className="w-full text-sm font-mono">
+              <thead>
+                <tr className="border-b border-gray-300 text-left">
+                  <th className="pb-1">Item</th>
+                  <th className="pb-1 text-right">Qty</th>
+                  <th className="pb-1 text-right">Total</th>
+                  <th className="w-4"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {cart.map(item => (
+                  <tr key={item.id} className="border-b border-gray-100">
+                    <td className="py-1">{item.name}</td>
+                    <td className="py-1 text-right">{item.quantity}</td>
+                    <td className="py-1 text-right">{(item.price * item.quantity).toFixed(2)}</td>
+                    <td className="py-1 text-right">
+                      <button 
+                        onClick={() => removeFromCart(item.id)}
+                        className="text-black hover:text-red-600 font-bold px-1"
+                        disabled={showQuantityPopup || showTablePopup}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
 
-        <div className="border-t pt-4">
-          <div className="flex justify-between text-xl font-bold mb-4">
-            <span>Total:</span>
+        <div className="border-t-2 border-black pt-3 flex-shrink-0">
+          <div className="flex justify-between text-xl font-bold mb-4 font-mono">
+            <span>TOTAL:</span>
             <span>₹{calculateTotal().toFixed(2)}</span>
           </div>
-          <button 
-            onClick={handlePrint}
-            disabled={cart.length === 0 || (settings.enable_tables === 'true' && !selectedTable) || showQuantityPopup}
-            className={`w-full py-3 rounded-lg text-white transition-colors ${
-               cart.length > 0 && (!settings.enable_tables || selectedTable)
-               ? 'bg-green-600 hover:bg-green-700 shadow-lg transform scale-105' 
-               : 'bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed'
-            }`}
-          >
-            {cart.length > 0 && searchQuery === '' ? 'Print Bill (Enter)' : 'Print Bill'}
-          </button>
+          
+          <div className="flex gap-2">
+             <button 
+              onClick={handleSave}
+              disabled={cart.length === 0 || showQuantityPopup || showTablePopup}
+              className="flex-1 py-2 border border-black bg-gray-200 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 font-bold uppercase text-sm"
+            >
+              Save (F4)
+            </button>
+            <button 
+              onClick={handlePrint}
+              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null)}
+              className="flex-1 py-2 border border-black bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:border-gray-400 font-bold uppercase text-sm"
+            >
+              Print Bill
+            </button>
+          </div>
         </div>
       </div>
     </div>

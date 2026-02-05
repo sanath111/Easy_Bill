@@ -45,3 +45,8 @@ CREATE TABLE IF NOT EXISTS order_items (
     total REAL NOT NULL,
     FOREIGN KEY (order_id) REFERENCES orders(id)
 );
+
+-- Indices for Reporting Performance
+CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);

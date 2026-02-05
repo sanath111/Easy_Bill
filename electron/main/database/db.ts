@@ -57,10 +57,27 @@ export function initDatabase() {
       total REAL NOT NULL,
       FOREIGN KEY (order_id) REFERENCES orders(id)
   );
+
+  -- Indices for Reporting Performance
+  CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
+  CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+  CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
   `;
 
   db.exec(schema);
   
+  // Migration: Check if item_id exists in order_items (for existing DBs)
+  try {
+    const tableInfo = db.prepare("PRAGMA table_info(order_items)").all() as any[];
+    const hasItemId = tableInfo.some(col => col.name === 'item_id');
+    if (!hasItemId) {
+      console.log('Migrating: Adding item_id to order_items');
+      db.prepare("ALTER TABLE order_items ADD COLUMN item_id INTEGER").run();
+    }
+  } catch (e) {
+    console.error('Migration failed:', e);
+  }
+
   // Seed initial data
   const tableCount = db.prepare('SELECT count(*) as count FROM tables').get() as { count: number };
   if (tableCount.count === 0) {
@@ -87,6 +104,14 @@ export function initDatabase() {
     insert.run('printer_name', 'Microsoft Print to PDF');
     insert.run('bill_footer', 'Thank you for visiting!');
     insert.run('enable_tables', 'true');
+    
+    // New Bill Settings Defaults
+    insert.run('paper_size', '80mm'); // 3 inch
+    insert.run('font_size_header', '16px');
+    insert.run('font_size_body', '12px');
+    insert.run('line_pattern', 'dashed'); // dashed, solid, double
+    insert.run('show_token', 'true');
+    insert.run('show_logo', 'false');
   }
 }
 
@@ -117,8 +142,6 @@ export function addCategory(name: string) {
 }
 
 export function deleteCategory(id: number) {
-  // Optional: Check if items exist in this category before deleting, or cascade delete
-  // For now, simple delete. Items with this category_id will effectively have no category name join.
   return db.prepare('DELETE FROM categories WHERE id = ?').run(id);
 }
 
@@ -154,17 +177,140 @@ export function saveSettings(settings: any) {
 
 // Orders
 export function createOrder(tableId: number | null) {
-  const stmt = db.prepare('INSERT INTO orders (table_id) VALUES (?)');
-  const info = stmt.run(tableId);
-  return { id: info.lastInsertRowid, tableId, status: 'open', total_amount: 0 };
+  const transaction = db.transaction(() => {
+    const stmt = db.prepare('INSERT INTO orders (table_id, status) VALUES (?, ?)');
+    const info = stmt.run(tableId, 'open');
+    
+    if (tableId) {
+      db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(tableId);
+    }
+    
+    return { id: info.lastInsertRowid, tableId, status: 'open', total_amount: 0 };
+  });
+  return transaction();
 }
 
-export function getOrder(orderId: number) {
-    const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(orderId);
-    if (!order) return null;
+export function getOpenOrder(tableId: number) {
+  const order = db.prepare("SELECT * FROM orders WHERE table_id = ? AND status = 'open'").get(tableId);
+  if (!order) return null;
+  // @ts-ignore
+  order.items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+  return order;
+}
+
+export function getPendingOrders() {
+  const orders = db.prepare(`
+    SELECT o.*, t.name as table_name 
+    FROM orders o 
+    LEFT JOIN tables t ON o.table_id = t.id 
+    WHERE o.status = 'open'
+    ORDER BY o.created_at DESC
+  `).all();
+  
+  for (const order of orders) {
     // @ts-ignore
-    order.items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(orderId);
-    return order;
+    order.items = db.prepare('SELECT * FROM order_items WHERE order_id = ?').all(order.id);
+  }
+  
+  return orders;
+}
+
+export function saveOrder(orderId: number, items: any[], tableId: number | null) {
+  const transaction = db.transaction(() => {
+    // 1. Clear existing items for this order (simple way to handle updates)
+    db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+
+    // 2. Insert Order Items
+    const insertItem = db.prepare(`
+      INSERT INTO order_items (order_id, item_id, item_name, quantity, price, total)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    let total = 0;
+    for (const item of items) {
+      const itemTotal = item.price * item.quantity;
+      total += itemTotal;
+      insertItem.run(orderId, item.id, item.name, item.quantity, item.price, itemTotal);
+    }
+
+    // 3. Update Order Total
+    db.prepare('UPDATE orders SET total_amount = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?').run(total, orderId);
+    
+    // 4. Ensure table is occupied
+    if (tableId) {
+      db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(tableId);
+    }
+  });
+
+  transaction();
+  return { success: true };
+}
+
+export function closeOrder(orderId: number, total: number, items: any[], paymentMethod: string = 'Cash', tableId: number | null) {
+  const transaction = db.transaction(() => {
+    // 1. Update Order
+    db.prepare(`
+      UPDATE orders 
+      SET status = 'closed', total_amount = ?, closed_at = CURRENT_TIMESTAMP, payment_method = ? 
+      WHERE id = ?
+    `).run(total, paymentMethod, orderId);
+
+    // 2. Clear and Re-insert items (to ensure final state matches)
+    db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+    
+    const insertItem = db.prepare(`
+      INSERT INTO order_items (order_id, item_id, item_name, quantity, price, total)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `);
+
+    for (const item of items) {
+      insertItem.run(orderId, item.id, item.name, item.quantity, item.price, item.price * item.quantity);
+    }
+
+    // 3. Free the table
+    if (tableId) {
+      db.prepare("UPDATE tables SET status = 'available' WHERE id = ?").run(tableId);
+    }
+  });
+
+  transaction();
+  return { success: true };
+}
+
+// Reports
+export function getSalesReport(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+
+  const summary = db.prepare(`
+    SELECT 
+      COUNT(*) as total_orders,
+      SUM(total_amount) as total_revenue,
+      AVG(total_amount) as average_order_value
+    FROM orders 
+    WHERE status = 'closed' AND created_at BETWEEN ? AND ?
+  `).get(start, end);
+
+  return summary;
+}
+
+export function getItemSalesReport(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+
+  const items = db.prepare(`
+    SELECT 
+      oi.item_name,
+      SUM(oi.quantity) as quantity_sold,
+      SUM(oi.total) as revenue
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.id
+    WHERE o.status = 'closed' AND o.created_at BETWEEN ? AND ?
+    GROUP BY oi.item_name
+    ORDER BY revenue DESC
+  `).all(start, end);
+
+  return items;
 }
 
 export default db;
