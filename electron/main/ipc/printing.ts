@@ -25,22 +25,42 @@ export function setupPrintingHandlers() {
 
       console.log(`Printing to: ${printerName}`);
 
-      // Determine CSS width based on paper size setting
-      let cssWidth = '80mm'; // Default 3 inch
-      if (settings.paper_size === '58mm') cssWidth = '58mm'; // 2 inch
-      if (settings.paper_size === '100mm') cssWidth = '100mm'; // 4 inch
+      // Determine CSS width based on paper size setting (printable area)
+      let cssWidth = '70mm'; // Default 3 inch (Printable 76mm)
+      if (settings.paper_size === '58mm') cssWidth = '52mm'; // 2 inch (Printable 58mm)
+      if (settings.paper_size === '100mm') cssWidth = '104mm'; // 4 inch (Printable 110mm)
 
       // Determine Line Style
       let borderStyle = '1px dashed #000';
       if (settings.line_pattern === 'solid') borderStyle = '1px solid #000';
       if (settings.line_pattern === 'double') borderStyle = '3px double #000';
       
-      // Token Number
-      const tokenNumber = billData.tableId ? `Token: #${billData.tableId}-${Math.floor(Math.random() * 100)}` : `Token: #${Math.floor(Math.random() * 1000)}`;
+      // Determine Font Family
+      const fontFamily = settings.font_family || 'monospace';
+
+      // Token Number (if needed for internal logic, though not in sample)
+      const tokenNumber = billData.tableId ? `${billData.tableId}` : `${Math.floor(Math.random() * 100)}`;
+      
+      // Order Type / Table Name
+      let tableDisplay = 'Takeaway';
+      if (billData.tableId) {
+        // Find table name from tableId if possible, but billData might only have ID.
+        // For now assume "Table X" or passed "Dine In" logic if available.
+        // Since we don't have the table name in billData usually, we might rely on ID.
+        // ideally billData should contain the table name or we fetch it.
+        // For simplicity, we'll format as "Dine In: T<ID>"
+        tableDisplay = `Dine In: T${billData.tableId}`;
+      }
 
       // Determine Title (KOT or Bill)
       const title = billData.type === 'KOT' ? 'KITCHEN ORDER TICKET' : (settings.hotel_name || 'Easy Bill Hotel');
       const isKOT = billData.type === 'KOT';
+      
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('en-GB'); // DD/MM/YY
+      const timeStr = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+      const totalQty = billData.items.reduce((sum: number, item: any) => sum + item.quantity, 0);
 
       // 1. Generate HTML for the receipt
       const htmlContent = `
@@ -50,60 +70,97 @@ export function setupPrintingHandlers() {
           <style>
             @page {
               margin: 0;
-              size: ${cssWidth} auto; /* Auto height */
+              size: ${cssWidth} auto;
             }
             body {
-              font-family: 'Courier New', monospace;
+              font-family: ${fontFamily};
               width: ${cssWidth};
               margin: 0;
-              padding: 2mm; /* Small padding to prevent edge cutting */
+              padding: 0; /* No padding as requested */
               font-size: ${settings.font_size_body || '12px'};
-              box-sizing: border-box; /* Crucial: Padding included in width */
-              overflow: hidden; /* Prevent spillover */
+              color: black;
+              box-sizing: border-box;
+              overflow-x: hidden;
             }
             .header {
               text-align: center;
-              margin-bottom: 10px;
+              margin-bottom: 5px;
             }
             .hotel-name {
               font-size: ${settings.font_size_header || '16px'};
               font-weight: bold;
               text-transform: uppercase;
-              word-wrap: break-word; /* Prevent long names from breaking layout */
+              margin-bottom: 2px;
+              word-wrap: break-word;
+            }
+            .address {
+              font-size: 0.9em;
+              white-space: pre-wrap;
+              word-wrap: break-word;
             }
             .divider {
               border-top: ${borderStyle};
               margin: 5px 0;
+              width: 100%;
+            }
+            .grid-meta {
+              display: flex;
+              flex-wrap: wrap;
+              justify-content: space-between;
+              margin: 5px 0;
+              line-height: 1.4;
+            }
+            .grid-meta > div {
+              /* Ensure items don't overlap */
+            }
+            .bold {
+              font-weight: bold;
+            }
+            .flex-row {
+              display: flex;
+              justify-content: space-between;
             }
             table {
               width: 100%;
               border-collapse: collapse;
-              table-layout: fixed; /* Fixed layout for better column control */
+              table-layout: fixed;
             }
             th, td {
               text-align: left;
+              vertical-align: top;
               padding: 2px 0;
-              word-wrap: break-word;
+              word-break: break-all; /* Prevent overflow */
             }
-            /* Column widths */
-            th:nth-child(1), td:nth-child(1) { width: 50%; } /* Item Name */
-            th:nth-child(2), td:nth-child(2) { width: 20%; text-align: right; } /* Qty */
-            th:nth-child(3), td:nth-child(3) { width: 30%; text-align: right; } /* Price */
+            th {
+              padding-bottom: 2px;
+            }
+            /* Adjusted Column widths for better fit */
+            .col-item { width: 40%; }
+            .col-qty { width: 15%; text-align: right; }
+            .col-price { width: 22%; text-align: right; }
+            .col-amt { width: 23%; text-align: right; }
 
-            .text-right {
+            .totals-section {
+              margin-top: 5px;
+            }
+            .grand-total {
+              font-size: 1.2em;
+              font-weight: bold;
               text-align: right;
+              margin: 5px 0;
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
             }
             .footer {
               text-align: center;
-              margin-top: 15px;
-              font-size: 10px;
+              margin-top: 10px;
+              font-size: 0.9em;
               word-wrap: break-word;
             }
-            .token {
-              font-size: 14px;
-              font-weight: bold;
-              text-align: center;
+            .name-field {
               margin: 5px 0;
+              display: flex;
             }
           </style>
         </head>
@@ -111,29 +168,51 @@ export function setupPrintingHandlers() {
           <div class="header">
             ${!isKOT && settings.show_logo === 'true' ? '<div>[LOGO]</div>' : ''}
             <div class="hotel-name">${title}</div>
-            ${!isKOT ? `<div>${settings.hotel_address || ''}</div>` : ''}
-            <div>Date: ${new Date().toLocaleString()}</div>
-            ${billData.tableId ? `<div>Table: ${billData.tableId}</div>` : '<div>Takeaway</div>'}
+            ${!isKOT ? `<div class="address">${settings.hotel_address || ''}</div>` : ''}
           </div>
-          
-          ${settings.show_token === 'true' ? `<div class="token">${tokenNumber}</div>` : ''}
 
           <div class="divider"></div>
-          
+
+          ${!isKOT ? `
+          <div class="name-field">
+            Name: __________________________
+          </div>
+          <div class="divider"></div>
+          ` : ''}
+
+          <div class="grid-meta">
+            <div style="width: 50%;">Date: ${dateStr}</div>
+            <div style="width: 50%; text-align: right;" class="bold">${tableDisplay}</div>
+            <div style="width: 50%;">${timeStr}</div>
+            <div style="width: 50%; text-align: right;">Bill No.: ${Math.floor(Math.random() * 10000)}</div>
+            ${!isKOT && settings.show_cashier === 'true' ? `<div style="width: 100%; margin-top: 2px;">Cashier: ${settings.cashier_name || 'Admin'}</div>` : ''}
+          </div>
+
+          <div class="divider"></div>
+
           <table>
             <thead>
               <tr>
-                <th>Item</th>
-                <th class="text-right">Qty</th>
-                ${!isKOT ? '<th class="text-right">Price</th>' : ''}
+                <th class="col-item">Item</th>
+                <th class="col-qty">Qty.</th>
+                ${!isKOT ? `
+                <th class="col-price">Price</th>
+                <th class="col-amt">Amount</th>
+                ` : ''}
               </tr>
             </thead>
+          </table>
+          <div class="divider" style="margin-top: 0;"></div>
+          <table>
             <tbody>
               ${billData.items.map((item: any) => `
                 <tr>
-                  <td>${item.name}</td>
-                  <td class="text-right">${item.quantity}</td>
-                  ${!isKOT ? `<td class="text-right">${(item.price * item.quantity).toFixed(2)}</td>` : ''}
+                  <td class="col-item">${item.name}</td>
+                  <td class="col-qty">${item.quantity}</td>
+                  ${!isKOT ? `
+                  <td class="col-price">${item.price.toFixed(2)}</td>
+                  <td class="col-amt">${(item.price * item.quantity).toFixed(2)}</td>
+                  ` : ''}
                 </tr>
               `).join('')}
             </tbody>
@@ -142,15 +221,29 @@ export function setupPrintingHandlers() {
           <div class="divider"></div>
           
           ${!isKOT ? `
-          <div style="display: flex; justify-content: space-between; font-weight: bold; font-size: 14px;">
-            <span>Total:</span>
-            <span>₹${billData.total.toFixed(2)}</span>
+          <div class="totals-section">
+            <div class="flex-row">
+              <span class="bold">Total Qty: ${totalQty}</span>
+              <span class="bold">Sub Total  ${billData.total.toFixed(2)}</span>
+            </div>
           </div>
           
+          <div class="divider"></div>
+
+          <div class="grand-total">
+            <span>Grand Total</span>
+            <span>₹ ${billData.total.toFixed(2)}</span>
+          </div>
+
+          <div class="divider"></div>
+          
           <div class="footer">
-            ${settings.bill_footer || 'Thank you for your visit!'}
+            <div>Thank You, Visit Again</div>
+            ${settings.bill_footer ? `<div>${settings.bill_footer}</div>` : ''}
           </div>
           ` : ''}
+
+          ${isKOT ? `<div style="text-align: center; font-weight: bold; margin-top: 10px;">End of KOT</div>` : ''}
         </body>
         </html>
       `;
@@ -189,8 +282,6 @@ export function setupPrintingHandlers() {
             console.log('Print initiated successfully');
             resolve({ success: true, message: "Printed successfully" });
           }
-          // We don't close the window immediately to allow reuse,
-          // but in a real app you might want to manage lifecycle better.
         });
       });
 

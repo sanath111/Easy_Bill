@@ -25,6 +25,10 @@ export interface IElectronAPI {
   // Reports
   getSalesReport: (range: { startDate: string, endDate: string }) => Promise<any>;
   getItemSalesReport: (range: { startDate: string, endDate: string }) => Promise<any>;
+  getSalesByDay: (range: { startDate: string, endDate: string }) => Promise<any[]>;
+  getSalesByPaymentMethod: (range: { startDate: string, endDate: string }) => Promise<any[]>;
+  getSalesByCategory: (range: { startDate: string, endDate: string }) => Promise<any[]>;
+  getExportData: (range: { startDate: string, endDate: string }) => Promise<any[]>;
 
   // Printing
   getPrinters: () => Promise<any[]>;

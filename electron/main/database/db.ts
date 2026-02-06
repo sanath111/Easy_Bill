@@ -112,6 +112,9 @@ export function initDatabase() {
     insert.run('line_pattern', 'dashed'); // dashed, solid, double
     insert.run('show_token', 'true');
     insert.run('show_logo', 'false');
+    insert.run('font_family', 'monospace');
+    insert.run('show_cashier', 'true');
+    insert.run('cashier_name', 'Cashier');
   }
 }
 
@@ -311,6 +314,78 @@ export function getItemSalesReport(startDate: string, endDate: string) {
   `).all(start, end);
 
   return items;
+}
+
+export function getSalesByDay(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+  return db.prepare(`
+    SELECT 
+      strftime('%Y-%m-%d', created_at) as date,
+      COUNT(*) as total_orders,
+      SUM(total_amount) as total_revenue
+    FROM orders 
+    WHERE status = 'closed' AND created_at BETWEEN ? AND ?
+    GROUP BY date
+    ORDER BY date ASC
+  `).all(start, end);
+}
+
+export function getSalesByPaymentMethod(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+  return db.prepare(`
+    SELECT 
+      payment_method,
+      COUNT(*) as total_orders,
+      SUM(total_amount) as total_revenue
+    FROM orders 
+    WHERE status = 'closed' AND created_at BETWEEN ? AND ?
+    GROUP BY payment_method
+  `).all(start, end);
+}
+
+export function getSalesByCategory(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+  return db.prepare(`
+    SELECT 
+      IFNULL(c.name, 'Uncategorized') as category_name,
+      SUM(oi.quantity) as quantity_sold,
+      SUM(oi.total) as revenue
+    FROM order_items oi
+    JOIN orders o ON oi.order_id = o.id
+    LEFT JOIN menu_items mi ON oi.item_id = mi.id
+    LEFT JOIN categories c ON mi.category_id = c.id
+    WHERE o.status = 'closed' AND o.created_at BETWEEN ? AND ?
+    GROUP BY category_name
+    ORDER BY revenue DESC
+  `).all(start, end);
+}
+
+export function getExportData(startDate: string, endDate: string) {
+  const start = `${startDate} 00:00:00`;
+  const end = `${endDate} 23:59:59`;
+  return db.prepare(`
+    SELECT 
+      o.id as order_id,
+      o.created_at,
+      o.table_id,
+      t.name as table_name,
+      o.payment_method,
+      oi.item_name,
+      IFNULL(c.name, 'Uncategorized') as category_name,
+      oi.quantity,
+      oi.price,
+      oi.total
+    FROM orders o
+    JOIN order_items oi ON o.id = oi.order_id
+    LEFT JOIN tables t ON o.table_id = t.id
+    LEFT JOIN menu_items mi ON oi.item_id = mi.id
+    LEFT JOIN categories c ON mi.category_id = c.id
+    WHERE o.status = 'closed' AND o.created_at BETWEEN ? AND ?
+    ORDER BY o.created_at DESC
+  `).all(start, end);
 }
 
 export default db;

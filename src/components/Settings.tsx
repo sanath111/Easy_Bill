@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useToast } from '../context/ToastContext';
 
 const SettingsPage = () => {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('general');
   const [settings, setSettings] = useState({
     hotel_name: '',
@@ -13,7 +15,10 @@ const SettingsPage = () => {
     font_size_body: '12px',
     line_pattern: 'dashed',
     show_token: 'true',
-    show_logo: 'false'
+    show_logo: 'false',
+    font_family: 'monospace',
+    show_cashier: 'true',
+    cashier_name: 'Cashier'
   });
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
@@ -43,7 +48,7 @@ const SettingsPage = () => {
 
   const handleSaveSettings = async () => {
     await window.api.saveSettings(settings);
-    alert('Settings saved!');
+    showToast('Settings saved!', 'success');
   };
 
   // ... (Keep existing handlers for Menu/Table/Category) ...
@@ -63,7 +68,7 @@ const SettingsPage = () => {
   const handleAddMenuItem = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItem.name || !newItem.price || !newItem.category_id) {
-      alert('Please fill all fields including category');
+      showToast('Please fill all fields including category', 'error');
       return;
     }
     await window.api.addMenuItem({ ...newItem, price: parseFloat(newItem.price), category_id: parseInt(newItem.category_id) });
@@ -91,60 +96,104 @@ const SettingsPage = () => {
 
   // --- Bill Preview Component ---
   const BillPreview = () => {
-    const width = settings.paper_size === '58mm' ? '200px' : settings.paper_size === '100mm' ? '350px' : '280px';
+    // Printable areas: 2"->58mm, 3"->76mm, 4"->110mm
+    const width = settings.paper_size === '58mm' ? '52mm' : settings.paper_size === '100mm' ? '104mm' : '70mm';
     const borderStyle = settings.line_pattern === 'solid' ? '1px solid #000' : settings.line_pattern === 'double' ? '3px double #000' : '1px dashed #000';
+    const fontFamily = settings.font_family || 'monospace';
 
     return (
-      <div className="bg-gray-100 p-4 rounded border flex justify-center">
+      <div className="bg-gray-100 p-4 rounded border flex justify-center overflow-auto">
         <div style={{ 
           width: width, 
           backgroundColor: 'white', 
-          padding: '10px', 
-          fontFamily: 'monospace', 
+          padding: '0', // No padding as requested
+          fontFamily: fontFamily, 
           fontSize: settings.font_size_body,
-          boxShadow: '0 2px 5px rgba(0,0,0,0.1)'
+          boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
+          color: 'black',
+          boxSizing: 'border-box'
         }}>
+          {/* Header */}
           <div className="text-center mb-2">
-            {settings.show_logo === 'true' && <div className="mb-1">[LOGO]</div>}
-            <div style={{ fontSize: settings.font_size_header, fontWeight: 'bold', textTransform: 'uppercase' }}>
+            <div style={{ fontSize: settings.font_size_header, fontWeight: 'bold', textTransform: 'uppercase', wordWrap: 'break-word' }}>
               {settings.hotel_name || 'HOTEL NAME'}
             </div>
-            <div>{settings.hotel_address || 'Address Line 1'}</div>
-            <div>Date: {new Date().toLocaleDateString()}</div>
-          </div>
-
-          {settings.show_token === 'true' && (
-            <div className="text-center font-bold my-2">Token: #42</div>
-          )}
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          <div className="flex justify-between font-bold">
-            <span>Item</span>
-            <span>Qty</span>
-            <span>Price</span>
-          </div>
-          
-          <div className="flex justify-between">
-            <span>Burger</span>
-            <span>2</span>
-            <span>120.00</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Coke</span>
-            <span>1</span>
-            <span>40.00</span>
+            <div style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{settings.hotel_address || 'Address Line 1'}</div>
           </div>
 
           <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
 
-          <div className="flex justify-between font-bold text-lg">
-            <span>Total:</span>
-            <span>₹160.00</span>
+          {/* Name Field */}
+          <div className="mb-2 flex">
+            <span>Name: </span>
+            <span style={{ borderBottom: '1px solid black', flexGrow: 1, marginLeft: '5px' }}></span>
           </div>
 
-          <div className="text-center mt-4 text-xs">
-            {settings.bill_footer || 'Thank you!'}
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Metadata Grid - Updated to Flex */}
+          <div className="flex flex-wrap justify-between mb-2">
+            <div style={{ width: '50%' }}>Date: {new Date().toLocaleDateString('en-GB')}</div>
+            <div style={{ width: '50%', textAlign: 'right', fontWeight: 'bold' }}>Dine In: T5</div>
+            
+            <div style={{ width: '50%' }}>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+            <div style={{ width: '50%', textAlign: 'right' }}>Bill No.: 7656</div>
+            
+            {settings.show_cashier === 'true' && (
+              <div style={{ width: '100%', marginTop: '2px' }}>Cashier: {settings.cashier_name}</div>
+            )}
+          </div>
+
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Items Header - Updated Widths */}
+          <div className="flex text-sm font-bold mb-1">
+            <span style={{ width: '40%' }}>Item</span>
+            <span style={{ width: '15%', textAlign: 'right' }}>Qty</span>
+            <span style={{ width: '22%', textAlign: 'right' }}>Price</span>
+            <span style={{ width: '23%', textAlign: 'right' }}>Amount</span>
+          </div>
+
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Items List - Updated Widths */}
+          <div className="space-y-1">
+             <div className="flex">
+               <span style={{ width: '40%', wordBreak: 'break-all' }}>Crispy Chicken Burger</span>
+               <span style={{ width: '15%', textAlign: 'right' }}>1</span>
+               <span style={{ width: '22%', textAlign: 'right' }}>130.00</span>
+               <span style={{ width: '23%', textAlign: 'right' }}>130.00</span>
+             </div>
+             <div className="flex">
+               <span style={{ width: '40%', wordBreak: 'break-all' }}>Pepsi-250ml</span>
+               <span style={{ width: '15%', textAlign: 'right' }}>1</span>
+               <span style={{ width: '22%', textAlign: 'right' }}>20.00</span>
+               <span style={{ width: '23%', textAlign: 'right' }}>20.00</span>
+             </div>
+          </div>
+
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Totals */}
+          <div className="flex justify-between font-bold mb-2">
+            <span>Total Qty: 2</span>
+            <span>Sub Total: 150.00</span>
+          </div>
+
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Grand Total */}
+          <div className="flex justify-between items-center text-lg font-bold my-2">
+            <span>Grand Total</span>
+            <span>₹ 150.00</span>
+          </div>
+
+          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+
+          {/* Footer */}
+          <div className="text-center mt-2 text-xs">
+            <div className="mb-1">Thank You, Visit Again</div>
+            {settings.bill_footer && <div>{settings.bill_footer}</div>}
           </div>
         </div>
       </div>
@@ -335,6 +384,28 @@ const SettingsPage = () => {
             </div>
 
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Font Family</label>
+              <select className="w-full p-2 border rounded-md" value={settings.font_family || 'monospace'} onChange={e => setSettings({...settings, font_family: e.target.value})}>
+                <option value="monospace">Monospace (Courier)</option>
+                <option value="sans-serif">Sans Serif (Arial/Helvetica)</option>
+                <option value="serif">Serif (Times New Roman)</option>
+                <option value="'Courier New', Courier, monospace">Courier New</option>
+                <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Cashier Name (Display)</label>
+              <input 
+                type="text" 
+                className="w-full p-2 border rounded-md" 
+                value={settings.cashier_name || ''} 
+                onChange={e => setSettings({...settings, cashier_name: e.target.value})}
+                placeholder="e.g. Biller"
+              />
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Bill Footer Text</label>
               <textarea 
                 className="w-full p-2 border rounded-md" 
@@ -345,6 +416,10 @@ const SettingsPage = () => {
             </div>
 
             <div className="space-y-2">
+              <div className="flex items-center">
+                <input type="checkbox" id="showCashier" className="w-4 h-4" checked={settings.show_cashier === 'true'} onChange={e => setSettings({...settings, show_cashier: e.target.checked ? 'true' : 'false'})} />
+                <label htmlFor="showCashier" className="ml-2 text-sm font-medium text-gray-700">Show Cashier Name</label>
+              </div>
               <div className="flex items-center">
                 <input type="checkbox" id="showToken" className="w-4 h-4" checked={settings.show_token === 'true'} onChange={e => setSettings({...settings, show_token: e.target.checked ? 'true' : 'false'})} />
                 <label htmlFor="showToken" className="ml-2 text-sm font-medium text-gray-700">Show Token Number</label>

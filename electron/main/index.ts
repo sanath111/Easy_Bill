@@ -19,7 +19,11 @@ import {
   getOpenOrder,
   getPendingOrders,
   getSalesReport,
-  getItemSalesReport
+  getItemSalesReport,
+  getSalesByDay,
+  getSalesByPaymentMethod,
+  getSalesByCategory,
+  getExportData
 } from './database/db';
 import { setupPrintingHandlers } from './ipc/printing';
 import { checkLicense } from './license/validator';
@@ -95,6 +99,10 @@ app.whenReady().then(async () => {
   // Reports IPC
   ipcMain.handle('db:get-sales-report', (_, range) => getSalesReport(range.startDate, range.endDate));
   ipcMain.handle('db:get-item-sales-report', (_, range) => getItemSalesReport(range.startDate, range.endDate));
+  ipcMain.handle('db:get-sales-by-day', (_, range) => getSalesByDay(range.startDate, range.endDate));
+  ipcMain.handle('db:get-sales-by-payment', (_, range) => getSalesByPaymentMethod(range.startDate, range.endDate));
+  ipcMain.handle('db:get-sales-by-category', (_, range) => getSalesByCategory(range.startDate, range.endDate));
+  ipcMain.handle('db:get-export-data', (_, range) => getExportData(range.startDate, range.endDate));
 
   ipcMain.handle('license:status', () => licenseStatus);
 

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useToast } from '../context/ToastContext';
 
 const Billing = () => {
+  const { showToast } = useToast();
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
   const [selectedTable, setSelectedTable] = useState<number | null>(null);
@@ -196,6 +198,7 @@ const Billing = () => {
           tableId: selectedTable === 0 ? null : selectedTable
         });
         await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        showToast('Order updated & KOT printed', 'success');
         refreshAfterAction();
         return;
       }
@@ -208,6 +211,7 @@ const Billing = () => {
           tableId: selectedTable
         });
         await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        showToast('Order created & KOT printed', 'success');
         refreshAfterAction();
         return;
       }
@@ -215,7 +219,7 @@ const Billing = () => {
       setTableInput('0');
       setShowTablePopup(true);
     } catch (error: any) {
-      alert('Error saving order: ' + error.message);
+      showToast('Error saving order: ' + error.message, 'error');
       console.error(error);
     }
   };
@@ -227,7 +231,7 @@ const Billing = () => {
       if (tableId !== 0) {
         const tableExists = tables.find(t => t.id === tableId);
         if (!tableExists) {
-          alert('Table does not exist!');
+          showToast('Table does not exist!', 'error');
           return;
         }
       }
@@ -248,9 +252,10 @@ const Billing = () => {
       });
 
       setShowTablePopup(false);
+      showToast('Order created & KOT printed', 'success');
       refreshAfterAction();
     } catch (error: any) {
-      alert('Error confirming order: ' + error.message);
+      showToast('Error confirming order: ' + error.message, 'error');
     }
   };
 
@@ -259,7 +264,7 @@ const Billing = () => {
       if (cart.length === 0) return;
 
       if (settings.enable_tables === 'true' && selectedTable === null) {
-        alert('Please select a table first');
+        showToast('Please select a table first', 'error');
         return;
       }
       
@@ -290,12 +295,13 @@ const Billing = () => {
       
       if (result.success) {
         console.log('Bill printed successfully!');
+        showToast('Bill printed successfully!', 'success');
         refreshAfterAction();
       } else {
-        alert('Printing failed: ' + result.error);
+        showToast('Printing failed: ' + result.error, 'error');
       }
     } catch (error: any) {
-      alert('Error printing bill: ' + error.message);
+      showToast('Error printing bill: ' + error.message, 'error');
       console.error(error);
     }
   };

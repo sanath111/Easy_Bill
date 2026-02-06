@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('api', {
   // Reports
   getSalesReport: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-sales-report', range),
   getItemSalesReport: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-item-sales-report', range),
+  getSalesByDay: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-sales-by-day', range),
+  getSalesByPaymentMethod: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-sales-by-payment', range),
+  getSalesByCategory: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-sales-by-category', range),
+  getExportData: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-export-data', range),
 
   // Printing
   getPrinters: () => ipcRenderer.invoke('print:get-printers'),
