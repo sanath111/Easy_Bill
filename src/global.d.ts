@@ -21,6 +21,7 @@ export interface IElectronAPI {
   closeOrder: (data: { orderId: number, total: number, items: any[], paymentMethod: string, tableId: number | null }) => Promise<any>;
   getOpenOrder: (tableId: number) => Promise<any>;
   getPendingOrders: () => Promise<any[]>;
+  deleteOrder: (id: number) => Promise<any>;
 
   // Reports
   getSalesReport: (range: { startDate: string, endDate: string }) => Promise<any>;

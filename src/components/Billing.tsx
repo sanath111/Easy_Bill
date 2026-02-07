@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
+import { Search, RotateCcw, Printer, Save, Trash2 } from 'lucide-react';
 
 const Billing = () => {
   const { showToast } = useToast();
@@ -89,7 +90,14 @@ const Billing = () => {
       }
     };
     
-    loadTableOrder();
+    // Only verify table order if we aren't already working on a specific order ID loaded from pending
+    if (selectedTable && !currentOrderId) {
+        loadTableOrder();
+    } else if (selectedTable && currentOrderId) {
+        // If we have an order ID, double check it matches table if table switched? 
+        // Actually, if user manually switches table dropdown, we should probably reset or check.
+        // For simplicity, let's assume if currentOrderId is set, we are in "Edit Mode"
+    }
   }, [selectedTable]);
 
   useEffect(() => {
@@ -124,14 +132,7 @@ const Billing = () => {
         }
       }, 50);
     } else {
-      // Only return focus to main search if we are NOT in pending search
-      if (document.activeElement !== pendingSearchInputRef.current) {
-        setTimeout(() => {
-          if (searchInputRef.current) {
-            searchInputRef.current.focus();
-          }
-        }, 50);
-      }
+      // Logic for main focus is handled by specific interactions or shortcuts
     }
   }, [showQuantityPopup, showTablePopup]);
 
@@ -145,6 +146,7 @@ const Billing = () => {
     }
     
     setSelectedTable(newTableId);
+    // Trigger reload if table has existing order is handled by useEffect
   };
 
   const initiateAddToCart = (item: any) => {
@@ -167,6 +169,7 @@ const Billing = () => {
     setShowQuantityPopup(false);
     setPendingItem(null);
     setSearchQuery('');
+    if (searchInputRef.current) searchInputRef.current.focus();
   };
 
   const removeFromCart = (itemId: number) => {
@@ -185,11 +188,15 @@ const Billing = () => {
     const t = await window.api.getTables();
     setTables(t);
     loadPendingBills();
+    if (searchInputRef.current) searchInputRef.current.focus();
   };
 
   const handleSave = async () => {
     try {
-      if (cart.length === 0) return;
+      if (cart.length === 0) {
+          showToast('Cart is empty', 'error');
+          return;
+      }
 
       if (currentOrderId) {
         await window.api.saveOrder({
@@ -261,10 +268,13 @@ const Billing = () => {
 
   const handlePrint = async () => {
     try {
-      if (cart.length === 0) return;
+      if (cart.length === 0) {
+          showToast('Cart is empty', 'error');
+          return;
+      }
 
-      if (settings.enable_tables === 'true' && selectedTable === null) {
-        showToast('Please select a table first', 'error');
+      if (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId) {
+        showToast('Please select a table or save order first', 'error');
         return;
       }
       
@@ -306,8 +316,29 @@ const Billing = () => {
     }
   };
 
+  const handleDeleteOrder = async (orderId: number) => {
+    if (confirm('Are you sure you want to delete this order?')) {
+      await window.api.deleteOrder(orderId);
+      showToast('Order deleted', 'success');
+      loadPendingBills();
+      if (currentOrderId === orderId) {
+        refreshAfterAction();
+      }
+    }
+  };
+
   const handleMainKeyDown = (e: React.KeyboardEvent) => {
     if (showQuantityPopup || showTablePopup) return;
+
+    // F1: Focus Search
+    if (e.key === 'F1') {
+      e.preventDefault();
+      if (searchInputRef.current) {
+        searchInputRef.current.focus();
+        searchInputRef.current.select();
+      }
+      return;
+    }
 
     // F2: Focus Pending Orders
     if (e.key === 'F2') {
@@ -321,38 +352,49 @@ const Billing = () => {
       return;
     }
 
+    // F4: Save / Print KOT
     if (e.key === 'F4') {
       e.preventDefault();
       handleSave();
       return;
     }
 
-    if (e.key === 'ArrowDown') {
+    // F5: Print Bill
+    if (e.key === 'F5') {
       e.preventDefault();
-      if (selectedIndex === -1) {
-        setSelectedIndex(0);
-      } else {
-        setSelectedIndex(prev => (prev + 1) % filteredItems.length);
-      }
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (selectedIndex === -1) {
-        setSelectedIndex(filteredItems.length - 1);
-      } else {
-        setSelectedIndex(prev => (prev - 1 + filteredItems.length) % filteredItems.length);
-      }
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      
-      if (selectedIndex !== -1 && filteredItems.length > 0) {
-        initiateAddToCart(filteredItems[selectedIndex]);
-      } else if (searchQuery === '' && cart.length > 0) {
-        handleSave();
+      handlePrint();
+      return;
+    }
+
+    // Arrow Keys for Menu Search (only if search input is focused)
+    if (document.activeElement === searchInputRef.current) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (selectedIndex === -1) {
+          setSelectedIndex(0);
+        } else {
+          setSelectedIndex(prev => (prev + 1) % filteredItems.length);
+        }
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (selectedIndex === -1) {
+          setSelectedIndex(filteredItems.length - 1);
+        } else {
+          setSelectedIndex(prev => (prev - 1 + filteredItems.length) % filteredItems.length);
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (selectedIndex !== -1 && filteredItems.length > 0) {
+          initiateAddToCart(filteredItems[selectedIndex]);
+        } else if (searchQuery === '' && cart.length > 0) {
+          handleSave(); // Enter on empty search saves/prints KOT
+        }
       }
     }
   };
 
   const handlePendingKeyDown = (e: React.KeyboardEvent) => {
+    // Only handle nav if we have bills
     if (filteredPendingBills.length === 0) return;
 
     if (e.key === 'ArrowDown') {
@@ -365,8 +407,12 @@ const Billing = () => {
       e.preventDefault();
       if (pendingSelectedIndex !== -1) {
         loadOrderToCart(filteredPendingBills[pendingSelectedIndex]);
-        // Return focus to main search
         if (searchInputRef.current) searchInputRef.current.focus();
+      }
+    } else if (e.key === 'Delete') {
+      e.preventDefault();
+      if (pendingSelectedIndex !== -1) {
+        handleDeleteOrder(filteredPendingBills[pendingSelectedIndex].id);
       }
     } else if (e.key === 'Escape') {
       e.preventDefault();
@@ -391,6 +437,7 @@ const Billing = () => {
       e.preventDefault();
       setShowQuantityPopup(false);
       setPendingItem(null);
+      if (searchInputRef.current) searchInputRef.current.focus();
     }
   };
 
@@ -403,6 +450,7 @@ const Billing = () => {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       setShowTablePopup(false);
+      if (searchInputRef.current) searchInputRef.current.focus();
     }
   };
 
@@ -512,15 +560,21 @@ const Billing = () => {
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
         
         {/* Menu Selection */}
-        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden">
-          <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-1 flex-shrink-0">Menu Search</h2>
+        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden shadow-sm">
+          <div className="flex justify-between items-center border-b border-gray-300 pb-2 mb-3 flex-shrink-0">
+             <h2 className="text-lg font-bold text-black uppercase tracking-wide flex items-center gap-2">
+               <Search size={20} />
+               Menu Search
+             </h2>
+             <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold">F1</span>
+          </div>
           
           <div className="mb-2 relative flex-shrink-0">
             <input
               ref={searchInputRef}
               type="text"
-              className="w-full p-2 border border-gray-400 text-lg focus:outline-none focus:border-black font-mono"
-              placeholder="Type to search..."
+              className="w-full p-2 border border-gray-400 text-lg focus:outline-none focus:border-black font-mono transition-colors focus:bg-blue-50"
+              placeholder="Search item..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               disabled={showQuantityPopup || showTablePopup}
@@ -533,14 +587,14 @@ const Billing = () => {
           </div>
 
           {/* Only show list if searching */}
-          {searchQuery && (
+          {searchQuery ? (
             <div className="flex-1 overflow-y-auto border border-gray-200 bg-gray-50">
               <div className="flex flex-col">
                 {filteredItems.map((item, index) => (
                   <div 
                     key={item.id} 
                     onClick={() => initiateAddToCart(item)}
-                    className={`p-2 border-b border-gray-200 cursor-pointer flex justify-between items-center font-mono text-sm ${
+                    className={`p-2 border-b border-gray-200 cursor-pointer flex justify-between items-center font-mono text-sm transition-colors ${
                       index === selectedIndex 
                         ? 'bg-black text-white' 
                         : 'hover:bg-gray-200 text-black'
@@ -560,28 +614,32 @@ const Billing = () => {
                 <p className="text-center text-gray-500 mt-4 font-mono">No items found.</p>
               )}
             </div>
-          )}
-          
-          {!searchQuery && (
+          ) : (
              <div className="flex-1 flex items-center justify-center text-gray-400 font-mono text-sm">
-               Start typing to search...
+               Type to search (F1)
              </div>
           )}
         </div>
 
         {/* Pending Bills Section */}
-        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden">
-          <div className="flex justify-between items-center border-b border-gray-300 pb-1 mb-3 flex-shrink-0">
-            <h2 className="text-lg font-bold text-black uppercase tracking-wide">Pending Orders <span className="text-xs text-gray-500">(F2)</span></h2>
-            <input 
-              ref={pendingSearchInputRef}
-              type="text" 
-              placeholder="Search Table/ID..." 
-              className="p-1 border border-gray-400 text-xs font-mono w-40 focus:outline-none focus:border-black focus:bg-yellow-50"
-              value={pendingSearchQuery}
-              onChange={(e) => setPendingSearchQuery(e.target.value)}
-              onKeyDown={handlePendingKeyDown}
-            />
+        <div className="flex-1 bg-white border border-gray-400 p-4 flex flex-col min-h-0 overflow-hidden shadow-sm">
+          <div className="flex justify-between items-center border-b border-gray-300 pb-2 mb-3 flex-shrink-0">
+            <h2 className="text-lg font-bold text-black uppercase tracking-wide flex items-center gap-2">
+              <RotateCcw size={20} />
+              Pending Orders
+            </h2>
+            <div className="flex items-center gap-2">
+                <input 
+                  ref={pendingSearchInputRef}
+                  type="text" 
+                  placeholder="Search..." 
+                  className="p-1 border border-gray-400 text-xs font-mono w-32 focus:outline-none focus:border-black focus:bg-yellow-50"
+                  value={pendingSearchQuery}
+                  onChange={(e) => setPendingSearchQuery(e.target.value)}
+                  onKeyDown={handlePendingKeyDown}
+                />
+                <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold">F2</span>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto bg-gray-50 border border-gray-200">
@@ -594,8 +652,8 @@ const Billing = () => {
                     <th className="p-2 border-b border-gray-400">Table</th>
                     <th className="p-2 border-b border-gray-400">Token</th>
                     <th className="p-2 border-b border-gray-400">Items</th>
-                    <th className="p-2 border-b border-gray-400">Time</th>
                     <th className="p-2 border-b border-gray-400 text-right">Total</th>
+                    <th className="p-2 border-b border-gray-400 w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -605,7 +663,7 @@ const Billing = () => {
                       onClick={() => loadOrderToCart(order)}
                       className={`cursor-pointer border-b border-gray-300 ${
                         currentOrderId === order.id 
-                          ? 'bg-gray-300' 
+                          ? 'bg-blue-100' 
                           : filteredPendingBills.indexOf(order) === pendingSelectedIndex 
                             ? 'bg-black text-white' 
                             : 'hover:bg-gray-200'
@@ -614,10 +672,16 @@ const Billing = () => {
                       <td className="p-2 font-bold">{order.table_name || 'TKWY'}</td>
                       <td className="p-2">#{order.id}</td>
                       <td className="p-2">{order.items.length}</td>
-                      <td className="p-2 text-xs">
-                        {new Date(order.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                      </td>
                       <td className="p-2 font-bold text-right">₹{order.total_amount.toFixed(2)}</td>
+                      <td className="p-2 text-right">
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteOrder(order.id); }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="Delete Order (Del)"
+                          >
+                              <Trash2 size={14} />
+                          </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -628,13 +692,16 @@ const Billing = () => {
       </div>
 
       {/* Right Column: Cart & Billing */}
-      <div className="w-96 bg-white border border-gray-400 p-4 flex flex-col overflow-hidden">
-        <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-1 flex-shrink-0">Current Bill</h2>
+      <div className="w-96 bg-white border border-gray-400 p-4 flex flex-col overflow-hidden shadow-sm">
+        <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-2 flex-shrink-0 flex justify-between items-center">
+            <span>Current Bill</span>
+            {currentOrderId && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">#{currentOrderId}</span>}
+        </h2>
         
         {settings.enable_tables === 'true' && (
           <div className="mb-3 flex-shrink-0">
             <select 
-              className="w-full p-1 border border-gray-400 bg-gray-50 text-sm font-mono focus:outline-none"
+              className="w-full p-2 border border-gray-400 bg-gray-50 text-sm font-mono focus:outline-none focus:border-black font-bold"
               value={selectedTable === null ? '' : selectedTable}
               onChange={handleTableChange}
               disabled={showQuantityPopup || showTablePopup}
@@ -643,7 +710,7 @@ const Billing = () => {
               <option value="0">Takeaway</option>
               {tables.map(t => (
                 <option key={t.id} value={t.id}>
-                  {t.name} {t.status === 'occupied' ? '(Occ)' : ''}
+                  {t.name} {t.status === 'occupied' ? '(Occupied)' : ''}
                 </option>
               ))}
             </select>
@@ -665,14 +732,14 @@ const Billing = () => {
               </thead>
               <tbody>
                 {cart.map(item => (
-                  <tr key={item.id} className="border-b border-gray-100">
-                    <td className="py-1">{item.name}</td>
-                    <td className="py-1 text-right">{item.quantity}</td>
-                    <td className="py-1 text-right">{(item.price * item.quantity).toFixed(2)}</td>
-                    <td className="py-1 text-right">
+                  <tr key={item.id} className="border-b border-gray-100 last:border-0">
+                    <td className="py-2">{item.name}</td>
+                    <td className="py-2 text-right">{item.quantity}</td>
+                    <td className="py-2 text-right font-bold">{(item.price * item.quantity).toFixed(2)}</td>
+                    <td className="py-2 text-right">
                       <button 
                         onClick={() => removeFromCart(item.id)}
-                        className="text-black hover:text-red-600 font-bold px-1"
+                        className="text-gray-400 hover:text-red-600 font-bold px-1 transition-colors"
                         disabled={showQuantityPopup || showTablePopup}
                       >
                         ×
@@ -691,20 +758,22 @@ const Billing = () => {
             <span>₹{calculateTotal().toFixed(2)}</span>
           </div>
           
-          <div className="flex gap-2">
+          <div className="grid grid-cols-1 gap-2">
              <button 
               onClick={handleSave}
               disabled={cart.length === 0 || showQuantityPopup || showTablePopup}
-              className="flex-1 py-2 border border-black bg-gray-200 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 font-bold uppercase text-sm"
+              className="w-full py-3 border border-black bg-gray-200 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
-              Save (F4)
+              <span className="flex items-center gap-2"><Save size={18} /> Save & Print KOT</span>
+              <span className="text-xs bg-gray-300 text-gray-700 px-2 py-1 rounded group-hover:bg-gray-400">F4</span>
             </button>
             <button 
               onClick={handlePrint}
-              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null)}
-              className="flex-1 py-2 border border-black bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:border-gray-400 font-bold uppercase text-sm"
+              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId)}
+              className="w-full py-3 border border-black bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:border-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
-              Print Bill
+               <span className="flex items-center gap-2"><Printer size={18} /> Print Bill</span>
+               <span className="text-xs bg-gray-700 text-gray-300 px-2 py-1 rounded group-hover:bg-gray-600">F5</span>
             </button>
           </div>
         </div>

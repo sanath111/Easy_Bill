@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('db:close-order', data),
   getOpenOrder: (tableId: number) => ipcRenderer.invoke('db:get-open-order', tableId),
   getPendingOrders: () => ipcRenderer.invoke('db:get-pending-orders'),
+  deleteOrder: (id: number) => ipcRenderer.invoke('db:delete-order', id),
   
   // Reports
   getSalesReport: (range: { startDate: string, endDate: string }) => ipcRenderer.invoke('db:get-sales-report', range),

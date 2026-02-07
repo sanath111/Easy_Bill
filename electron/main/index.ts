@@ -18,6 +18,7 @@ import {
   closeOrder,
   getOpenOrder,
   getPendingOrders,
+  deleteOrder,
   getSalesReport,
   getItemSalesReport,
   getSalesByDay,
@@ -95,6 +96,7 @@ app.whenReady().then(async () => {
   ipcMain.handle('db:close-order', (_, data) => closeOrder(data.orderId, data.total, data.items, data.paymentMethod, data.tableId));
   ipcMain.handle('db:get-open-order', (_, tableId) => getOpenOrder(tableId));
   ipcMain.handle('db:get-pending-orders', () => getPendingOrders());
+  ipcMain.handle('db:delete-order', (_, id) => deleteOrder(id));
 
   // Reports IPC
   ipcMain.handle('db:get-sales-report', (_, range) => getSalesReport(range.startDate, range.endDate));

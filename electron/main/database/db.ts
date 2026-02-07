@@ -280,6 +280,29 @@ export function closeOrder(orderId: number, total: number, items: any[], payment
   return { success: true };
 }
 
+export function deleteOrder(orderId: number) {
+  const transaction = db.transaction(() => {
+    // 1. Get order details to check table
+    const order = db.prepare('SELECT table_id FROM orders WHERE id = ?').get(orderId) as any;
+    
+    if (order) {
+      // 2. Delete items
+      db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
+      
+      // 3. Delete order
+      db.prepare('DELETE FROM orders WHERE id = ?').run(orderId);
+
+      // 4. Free table if exists
+      if (order.table_id) {
+        db.prepare("UPDATE tables SET status = 'available' WHERE id = ?").run(order.table_id);
+      }
+    }
+  });
+  
+  transaction();
+  return { success: true };
+}
+
 // Reports
 export function getSalesReport(startDate: string, endDate: string) {
   const start = `${startDate} 00:00:00`;
