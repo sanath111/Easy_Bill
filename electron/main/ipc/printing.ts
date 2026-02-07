@@ -38,9 +38,6 @@ export function setupPrintingHandlers() {
       // Determine Font Family
       const fontFamily = settings.font_family || 'monospace';
 
-      // Token Number (if needed for internal logic, though not in sample)
-      const tokenNumber = billData.tableId ? `${billData.tableId}` : `${Math.floor(Math.random() * 100)}`;
-      
       // Order Type / Table Name
       let tableDisplay = 'Takeaway';
       if (billData.tableId) {

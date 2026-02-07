@@ -1,6 +1,6 @@
 
 
-
+                    
 # Easy Bill - Local-First Hotel Billing Software
 
 Easy Bill is a modern, high-performance Desktop POS (Point of Sale) application designed for hotels and restaurants. It follows a "Local-First" architecture, ensuring complete offline functionality with a robust SQLite database, while being future-proofed for mobile connectivity.

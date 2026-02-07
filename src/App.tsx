@@ -10,7 +10,7 @@ import SettingsPage from './components/Settings';
 function App() {
   return (
     <Router>
-      <div className="flex h-screen bg-gray-200 overflow-hidden font-mono">
+      <div className="flex h-screen bg-gray-200 overflow-hidden font-sans">
         {/* Sidebar */}
         <div className="w-16 lg:w-64 bg-white border-r border-gray-400 flex flex-col">
           <div className="p-4 border-b border-gray-400 flex justify-center lg:justify-start">
@@ -42,7 +42,7 @@ function App() {
 
         {/* Main Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden p-4">
+          <div className="flex-1 overflow-auto p-4">
             <Routes>
               <Route path="/" element={<Dashboard />} />
               <Route path="/billing" element={<Billing />} />

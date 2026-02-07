@@ -17,14 +17,12 @@ const Reports = () => {
   const [dailySales, setDailySales] = useState<any[]>([]);
   const [paymentStats, setPaymentStats] = useState<any[]>([]);
   const [categoryStats, setCategoryStats] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     loadReports();
   }, [dateRange]);
 
   const loadReports = async () => {
-    setLoading(true);
     try {
       const [s, items, daily, payments, categories] = await Promise.all([
         window.api.getSalesReport(dateRange),
@@ -41,8 +39,6 @@ const Reports = () => {
       setCategoryStats(categories || []);
     } catch (error) {
       console.error("Failed to load reports:", error);
-    } finally {
-      setLoading(false);
     }
   };
 
