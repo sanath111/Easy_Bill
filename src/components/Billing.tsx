@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
-import { Search, RotateCcw, Printer, Save, Trash2 } from 'lucide-react';
+import { Search, RotateCcw, Printer, Save, Trash2, AlertTriangle } from 'lucide-react';
 
 const Billing = () => {
   const { showToast } = useToast();
@@ -24,6 +24,10 @@ const Billing = () => {
   const [showTablePopup, setShowTablePopup] = useState(false);
   const [tableInput, setTableInput] = useState('0');
 
+  // Delete Confirmation Popup State
+  const [showDeletePopup, setShowDeletePopup] = useState(false);
+  const [orderToDelete, setOrderToDelete] = useState<number | null>(null);
+
   // Pending Bills State
   const [pendingBills, setPendingBills] = useState<any[]>([]);
   const [pendingSearchQuery, setPendingSearchQuery] = useState('');
@@ -34,6 +38,7 @@ const Billing = () => {
   const quantityInputRef = useRef<HTMLInputElement>(null);
   const tableInputRef = useRef<HTMLInputElement>(null);
   const pendingSearchInputRef = useRef<HTMLInputElement>(null);
+  const deleteConfirmButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -131,10 +136,23 @@ const Billing = () => {
           tableInputRef.current.select();
         }
       }, 50);
+    } else if (showDeletePopup) {
+      setTimeout(() => {
+        if (deleteConfirmButtonRef.current) {
+          deleteConfirmButtonRef.current.focus();
+        }
+      }, 50);
     } else {
-      // Logic for main focus is handled by specific interactions or shortcuts
+      // Only return focus to main search if we are NOT in pending search
+      if (document.activeElement !== pendingSearchInputRef.current) {
+        setTimeout(() => {
+          if (searchInputRef.current) {
+            searchInputRef.current.focus();
+          }
+        }, 50);
+      }
     }
-  }, [showQuantityPopup, showTablePopup]);
+  }, [showQuantityPopup, showTablePopup, showDeletePopup]);
 
   const handleTableChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
@@ -316,19 +334,26 @@ const Billing = () => {
     }
   };
 
-  const handleDeleteOrder = async (orderId: number) => {
-    if (confirm('Are you sure you want to delete this order?')) {
-      await window.api.deleteOrder(orderId);
+  const handleDeleteOrder = (orderId: number) => {
+    setOrderToDelete(orderId);
+    setShowDeletePopup(true);
+  };
+
+  const confirmDeleteOrder = async () => {
+    if (orderToDelete) {
+      await window.api.deleteOrder(orderToDelete);
       showToast('Order deleted', 'success');
       loadPendingBills();
-      if (currentOrderId === orderId) {
+      if (currentOrderId === orderToDelete) {
         refreshAfterAction();
       }
+      setShowDeletePopup(false);
+      setOrderToDelete(null);
     }
   };
 
   const handleMainKeyDown = (e: React.KeyboardEvent) => {
-    if (showQuantityPopup || showTablePopup) return;
+    if (showQuantityPopup || showTablePopup || showDeletePopup) return;
 
     // F1: Focus Search
     if (e.key === 'F1') {
@@ -454,6 +479,20 @@ const Billing = () => {
     }
   };
 
+  const handleDeletePopupKeyDown = (e: React.KeyboardEvent) => {
+    e.stopPropagation();
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmDeleteOrder();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setShowDeletePopup(false);
+      setOrderToDelete(null);
+      if (pendingSearchInputRef.current) pendingSearchInputRef.current.focus();
+    }
+  };
+
   const loadOrderToCart = (order: any) => {
     const normalizedItems = order.items.map((item: any) => ({
       ...item,
@@ -556,6 +595,40 @@ const Billing = () => {
         </div>
       )}
 
+      {/* Delete Confirmation Popup */}
+      {showDeletePopup && (
+        <div className="absolute inset-0 bg-black/20 flex items-center justify-center z-50">
+          <div 
+            className="bg-white border-2 border-black p-6 w-80 shadow-none text-center"
+            onKeyDown={handleDeletePopupKeyDown}
+          >
+            <div className="flex justify-center mb-3">
+              <AlertTriangle className="text-red-600" size={48} />
+            </div>
+            <h3 className="text-xl font-bold text-black mb-2">Delete Order?</h3>
+            <p className="text-gray-600 mb-6 font-mono text-sm">
+              Are you sure you want to delete order #{orderToDelete}? This action cannot be undone.
+            </p>
+            
+            <div className="flex gap-3">
+              <button 
+                onClick={() => { setShowDeletePopup(false); setOrderToDelete(null); }}
+                className="flex-1 py-2 border border-black text-black hover:bg-gray-100 font-bold uppercase"
+              >
+                Cancel
+              </button>
+              <button 
+                ref={deleteConfirmButtonRef}
+                onClick={confirmDeleteOrder}
+                className="flex-1 py-2 border border-black bg-red-600 text-white hover:bg-red-700 font-bold uppercase"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Left Column: Menu & Pending Bills */}
       <div className="flex-1 flex flex-col gap-4 overflow-hidden">
         
@@ -577,7 +650,7 @@ const Billing = () => {
               placeholder="Search item..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              disabled={showQuantityPopup || showTablePopup}
+              disabled={showQuantityPopup || showTablePopup || showDeletePopup}
             />
             {searchQuery === '' && cart.length > 0 && (
               <div className="absolute right-3 top-3 text-gray-500 text-xs font-bold">
@@ -637,6 +710,7 @@ const Billing = () => {
                   value={pendingSearchQuery}
                   onChange={(e) => setPendingSearchQuery(e.target.value)}
                   onKeyDown={handlePendingKeyDown}
+                  disabled={showDeletePopup}
                 />
                 <span className="text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded font-bold">F2</span>
             </div>
@@ -678,6 +752,7 @@ const Billing = () => {
                             onClick={(e) => { e.stopPropagation(); handleDeleteOrder(order.id); }}
                             className="text-red-500 hover:text-red-700 p-1"
                             title="Delete Order (Del)"
+                            disabled={showDeletePopup}
                           >
                               <Trash2 size={14} />
                           </button>
@@ -704,7 +779,7 @@ const Billing = () => {
               className="w-full p-2 border border-gray-400 bg-gray-50 text-sm font-mono focus:outline-none focus:border-black font-bold"
               value={selectedTable === null ? '' : selectedTable}
               onChange={handleTableChange}
-              disabled={showQuantityPopup || showTablePopup}
+              disabled={showQuantityPopup || showTablePopup || showDeletePopup}
             >
               <option value="">Select Table...</option>
               <option value="0">Takeaway</option>
@@ -740,7 +815,7 @@ const Billing = () => {
                       <button 
                         onClick={() => removeFromCart(item.id)}
                         className="text-gray-400 hover:text-red-600 font-bold px-1 transition-colors"
-                        disabled={showQuantityPopup || showTablePopup}
+                        disabled={showQuantityPopup || showTablePopup || showDeletePopup}
                       >
                         ×
                       </button>
@@ -761,7 +836,7 @@ const Billing = () => {
           <div className="grid grid-cols-1 gap-2">
              <button 
               onClick={handleSave}
-              disabled={cart.length === 0 || showQuantityPopup || showTablePopup}
+              disabled={cart.length === 0 || showQuantityPopup || showTablePopup || showDeletePopup}
               className="w-full py-3 border border-black bg-gray-200 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
               <span className="flex items-center gap-2"><Save size={18} /> Save & Print KOT</span>
@@ -769,7 +844,7 @@ const Billing = () => {
             </button>
             <button 
               onClick={handlePrint}
-              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId)}
+              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId) || showDeletePopup}
               className="w-full py-3 border border-black bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:border-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
                <span className="flex items-center gap-2"><Printer size={18} /> Print Bill</span>
