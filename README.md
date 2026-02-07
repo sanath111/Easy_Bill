@@ -60,30 +60,27 @@ Easy_Bill/
 ## ⚙️ Installation & Setup
 
 ### Prerequisites
-*   **Node.js**: v18 or higher (v20+ recommended).
-*   **Windows Build Tools**: Required for compiling `better-sqlite3`.
-    *   Run as Administrator: `npm install --global --production windows-build-tools`
-    *   OR ensure "Desktop development with C++" is installed via Visual Studio Installer.
+*   **Node.js LTS (v20.x)**: **Mandatory for easy setup.** Using Node v20 ensures that `better-sqlite3` can download a **prebuilt binary**. This avoids the need for manual C++ compilation and Visual Studio dependencies.
+    *   [Download Node.js v20.x LTS](https://nodejs.org/en/download)
+    *   Verify your version: `node -v`
 
-### Development
+### Clean Installation
 
-1.  **Clone the repository**
-    ```bash
-    git clone https://github.com/your-username/Easy_Bill.git
-    cd Easy_Bill
+To avoid permission errors and ensure prebuilt binaries are used:
+
+1.  **Close your IDE** (Cursor/VS Code) and any running app instances.
+2.  **Run this cleanup command** in PowerShell:
+    ```powershell
+    Stop-Process -Name node -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force node_modules, dist, dist-electron -ErrorAction SilentlyContinue
     ```
-
-2.  **Install Dependencies**
+3.  **Install & Rebuild**:
     ```bash
     npm install
-    ```
-
-3.  **Rebuild Native Modules** (Important for SQLite)
-    ```bash
     npm run postinstall
     ```
 
-4.  **Run in Development Mode**
+4.  **Run Dev Mode**:
     ```bash
     npm run dev
     ```
@@ -96,7 +93,7 @@ To create a standalone Windows executable (`.exe`):
 npm run build
 ```
 
-The output files (Installer and Portable EXE) will be located in the `dist/` folder.
+The output files will be in the `dist/` folder.
 
 ## ⌨️ Keyboard Shortcuts (Billing Page)
 
@@ -110,9 +107,12 @@ The output files (Installer and Portable EXE) will be located in the `dist/` fol
 
 ## 🐛 Troubleshooting
 
-**`better-sqlite3` / `node-gyp` errors:**
-If you see errors related to `distutils` or `msvs_version`, ensure you have Python installed and the Visual Studio Build Tools are correctly set up. You may need to run:
-`npm config set msvs_version 2022` (or your VS version).
+**`better-sqlite3` build errors:**
+If npm tries to "rebuild" or "node-gyp" fails, it means you are likely **not** on Node v20 LTS. Prebuilt binaries are only guaranteed for LTS versions. Switch to Node v20 and delete `node_modules` before trying again.
+
+**`EPERM: operation not permitted`:**
+A background process is locking files. Close your IDE, run `taskkill /F /IM node.exe /T` in PowerShell, and try again.
+
 
 **Navigation not working in Build:**
 Ensure `HashRouter` is used in `App.tsx` (already configured), as Electron serves files from the local filesystem which doesn't support standard browser history routing.

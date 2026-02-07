@@ -4,6 +4,9 @@
   "main": "dist-electron/main/index.js",
   "description": "Local-First Hotel Billing Software",
   "author": "Your Name",
+  "engines": {
+    "node": ">=20.0.0 <21.0.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && electron-builder",
