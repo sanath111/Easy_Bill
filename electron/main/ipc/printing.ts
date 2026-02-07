@@ -30,22 +30,46 @@ export function setupPrintingHandlers() {
       if (settings.paper_size === '58mm') cssWidth = '52mm'; // 2 inch (Printable 58mm)
       if (settings.paper_size === '100mm') cssWidth = '104mm'; // 4 inch (Printable 110mm)
 
-      // Determine Line Style
-      let borderStyle = '1px dashed #000';
-      if (settings.line_pattern === 'solid') borderStyle = '1px solid #000';
-      if (settings.line_pattern === 'double') borderStyle = '3px double #000';
+      // Divider Logic
+      const dividerType = settings.divider_type || 'css'; // 'css' or 'text'
+      const dividerChar = settings.divider_character || '-';
       
-      // Determine Font Family
-      const fontFamily = settings.font_family || 'monospace';
+      let dividerHtml = '';
+      if (dividerType === 'text') {
+        // Create a string of characters (approximate width)
+        // This is tricky without knowing exact char width, but flexible for "text feel"
+        const repeatCount = settings.paper_size === '58mm' ? 32 : settings.paper_size === '100mm' ? 64 : 42; 
+        const lineStr = dividerChar.repeat(repeatCount);
+        dividerHtml = `<div class="divider-text">${lineStr}</div>`;
+      } else {
+        // CSS Style
+        let borderStyle = '1px dashed #000';
+        if (settings.line_pattern === 'solid') borderStyle = '1px solid #000';
+        if (settings.line_pattern === 'double') borderStyle = '3px double #000';
+        dividerHtml = `<div class="divider-css" style="border-top: ${borderStyle};"></div>`;
+      }
+
+      // Font Settings per section
+      const fontHeader = {
+        family: settings.font_family_header || 'monospace',
+        size: settings.font_size_header || '16px'
+      };
+      const fontAddress = {
+        family: settings.font_family_address || 'monospace',
+        size: settings.font_size_address || '12px'
+      };
+      const fontBody = {
+        family: settings.font_family_body || 'monospace',
+        size: settings.font_size_body || '12px'
+      };
+      const fontFooter = {
+        family: settings.font_family_footer || 'monospace',
+        size: settings.font_size_footer || '12px'
+      };
 
       // Order Type / Table Name
       let tableDisplay = 'Takeaway';
       if (billData.tableId) {
-        // Find table name from tableId if possible, but billData might only have ID.
-        // For now assume "Table X" or passed "Dine In" logic if available.
-        // Since we don't have the table name in billData usually, we might rely on ID.
-        // ideally billData should contain the table name or we fetch it.
-        // For simplicity, we'll format as "Dine In: T<ID>"
         tableDisplay = `Dine In: T${billData.tableId}`;
       }
 
@@ -70,45 +94,62 @@ export function setupPrintingHandlers() {
               size: ${cssWidth} auto;
             }
             body {
-              font-family: ${fontFamily};
               width: ${cssWidth};
               margin: 0;
-              padding: 0; /* No padding as requested */
-              font-size: ${settings.font_size_body || '12px'};
+              padding: 0;
               color: black;
               box-sizing: border-box;
               overflow-x: hidden;
             }
-            .header {
+            /* Section Styles */
+            .header-section {
+              font-family: ${fontHeader.family};
+              font-size: ${fontHeader.size};
               text-align: center;
-              margin-bottom: 5px;
-            }
-            .hotel-name {
-              font-size: ${settings.font_size_header || '16px'};
               font-weight: bold;
               text-transform: uppercase;
-              margin-bottom: 2px;
               word-wrap: break-word;
+              margin-bottom: 2px;
             }
-            .address {
-              font-size: 0.9em;
+            .address-section {
+              font-family: ${fontAddress.family};
+              font-size: ${fontAddress.size};
+              text-align: center;
               white-space: pre-wrap;
               word-wrap: break-word;
             }
-            .divider {
-              border-top: ${borderStyle};
+            .body-section {
+              font-family: ${fontBody.family};
+              font-size: ${fontBody.size};
+            }
+            .footer-section {
+              font-family: ${fontFooter.family};
+              font-size: ${fontFooter.size};
+              text-align: center;
+              margin-top: 10px;
+              word-wrap: break-word;
+            }
+
+            /* Divider */
+            .divider-container {
               margin: 5px 0;
               width: 100%;
+              text-align: center;
+              overflow: hidden;
             }
+            .divider-text {
+              font-family: monospace; /* Always monospace for alignment */
+              white-space: nowrap;
+            }
+            .divider-css {
+              width: 100%;
+            }
+
             .grid-meta {
               display: flex;
               flex-wrap: wrap;
               justify-content: space-between;
-              margin: 5px 0;
               line-height: 1.4;
-            }
-            .grid-meta > div {
-              /* Ensure items don't overlap */
             }
             .bold {
               font-weight: bold;
@@ -126,7 +167,7 @@ export function setupPrintingHandlers() {
               text-align: left;
               vertical-align: top;
               padding: 2px 0;
-              word-break: break-all; /* Prevent overflow */
+              word-break: break-all;
             }
             th {
               padding-bottom: 2px;
@@ -149,12 +190,6 @@ export function setupPrintingHandlers() {
               justify-content: space-between;
               align-items: center;
             }
-            .footer {
-              text-align: center;
-              margin-top: 10px;
-              font-size: 0.9em;
-              word-wrap: break-word;
-            }
             .name-field {
               margin: 5px 0;
               display: flex;
@@ -162,79 +197,86 @@ export function setupPrintingHandlers() {
           </style>
         </head>
         <body>
-          <div class="header">
+          <div class="header-section">
             ${!isKOT && settings.show_logo === 'true' ? '<div>[LOGO]</div>' : ''}
-            <div class="hotel-name">${title}</div>
-            ${!isKOT ? `<div class="address">${settings.hotel_address || ''}</div>` : ''}
+            <div>${title}</div>
           </div>
+          
+          ${!isKOT ? `<div class="address-section">${settings.hotel_address || ''}</div>` : ''}
 
-          <div class="divider"></div>
+          <div class="divider-container">${dividerHtml}</div>
 
-          ${!isKOT ? `
-          <div class="name-field">
-            Name: __________________________
-          </div>
-          <div class="divider"></div>
-          ` : ''}
+          <div class="body-section">
+            ${!isKOT ? `
+            <div class="name-field">
+              Name: __________________________
+            </div>
+            <div class="divider-container">${dividerHtml}</div>
+            ` : ''}
 
-          <div class="grid-meta">
-            <div style="width: 50%;">Date: ${dateStr}</div>
-            <div style="width: 50%; text-align: right;" class="bold">${tableDisplay}</div>
-            <div style="width: 50%;">${timeStr}</div>
-            <div style="width: 50%; text-align: right;">Bill No.: ${Math.floor(Math.random() * 10000)}</div>
-            ${!isKOT && settings.show_cashier === 'true' ? `<div style="width: 100%; margin-top: 2px;">Cashier: ${settings.cashier_name || 'Admin'}</div>` : ''}
-          </div>
+            <div class="grid-meta">
+              <div style="width: 50%;">Date: ${dateStr}</div>
+              <div style="width: 50%; text-align: right;" class="bold">${tableDisplay}</div>
+              <div style="width: 50%;">${timeStr}</div>
+              <div style="width: 50%; text-align: right;">Bill No.: ${Math.floor(Math.random() * 10000)}</div>
+              ${!isKOT && settings.show_cashier === 'true' ? `<div style="width: 100%; marginTop: 2px;">Cashier: ${settings.cashier_name || 'Admin'}</div>` : ''}
+            </div>
 
-          <div class="divider"></div>
+            <div class="divider-container">${dividerHtml}</div>
 
-          <table>
-            <thead>
-              <tr>
-                <th class="col-item">Item</th>
-                <th class="col-qty">Qty.</th>
-                ${!isKOT ? `
-                <th class="col-price">Price</th>
-                <th class="col-amt">Amount</th>
-                ` : ''}
-              </tr>
-            </thead>
-          </table>
-          <div class="divider" style="margin-top: 0;"></div>
-          <table>
-            <tbody>
-              ${billData.items.map((item: any) => `
+            <table>
+              <thead>
                 <tr>
-                  <td class="col-item">${item.name}</td>
-                  <td class="col-qty">${item.quantity}</td>
+                  <th class="col-item">Item</th>
+                  <th class="col-qty">Qty.</th>
                   ${!isKOT ? `
-                  <td class="col-price">${item.price.toFixed(2)}</td>
-                  <td class="col-amt">${(item.price * item.quantity).toFixed(2)}</td>
+                  <th class="col-price">Price</th>
+                  <th class="col-amt">Amount</th>
                   ` : ''}
                 </tr>
-              `).join('')}
-            </tbody>
-          </table>
-          
-          <div class="divider"></div>
+              </thead>
+            </table>
+            
+            <div class="divider-container" style="margin-top: 0;">${dividerHtml}</div>
+            
+            <table>
+              <tbody>
+                ${billData.items.map((item: any) => `
+                  <tr>
+                    <td class="col-item">${item.name}</td>
+                    <td class="col-qty">${item.quantity}</td>
+                    ${!isKOT ? `
+                    <td class="col-price">${item.price.toFixed(2)}</td>
+                    <td class="col-amt">${(item.price * item.quantity).toFixed(2)}</td>
+                    ` : ''}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+            
+            <div class="divider-container">${dividerHtml}</div>
+            
+            ${!isKOT ? `
+            <div class="totals-section">
+              <div class="flex-row">
+                <span class="bold">Total Qty: ${totalQty}</span>
+                <span class="bold">Sub Total: ${billData.total.toFixed(2)}</span>
+              </div>
+            </div>
+            
+            <div class="divider-container">${dividerHtml}</div>
+
+            <div class="grand-total">
+              <span>Grand Total</span>
+              <span>₹ ${billData.total.toFixed(2)}</span>
+            </div>
+
+            <div class="divider-container">${dividerHtml}</div>
+            ` : ''}
+          </div>
           
           ${!isKOT ? `
-          <div class="totals-section">
-            <div class="flex-row">
-              <span class="bold">Total Qty: ${totalQty}</span>
-              <span class="bold">Sub Total  ${billData.total.toFixed(2)}</span>
-            </div>
-          </div>
-          
-          <div class="divider"></div>
-
-          <div class="grand-total">
-            <span>Grand Total</span>
-            <span>₹ ${billData.total.toFixed(2)}</span>
-          </div>
-
-          <div class="divider"></div>
-          
-          <div class="footer">
+          <div class="footer-section">
             <div>Thank You, Visit Again</div>
             ${settings.bill_footer ? `<div>${settings.bill_footer}</div>` : ''}
           </div>

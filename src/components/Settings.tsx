@@ -5,21 +5,39 @@ const SettingsPage = () => {
   const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState('general');
   const [settings, setSettings] = useState({
+    // General
     hotel_name: '',
     hotel_address: '',
     printer_name: '',
-    bill_footer: '',
     enable_tables: 'true',
+    
+    // Bill Config
     paper_size: '80mm',
+    line_pattern: 'dashed', // or solid, double
+    divider_type: 'css', // 'css' or 'text'
+    divider_character: '-',
+    
+    // Fonts (Global defaults if specific ones missing)
+    font_family_header: 'monospace',
     font_size_header: '16px',
+    
+    font_family_address: 'monospace',
+    font_size_address: '12px',
+    
+    font_family_body: 'monospace',
     font_size_body: '12px',
-    line_pattern: 'dashed',
+    
+    font_family_footer: 'monospace',
+    font_size_footer: '12px',
+    
+    // Toggles
     show_token: 'true',
     show_logo: 'false',
-    font_family: 'monospace',
     show_cashier: 'true',
-    cashier_name: 'Cashier'
+    cashier_name: 'Cashier',
+    bill_footer: '',
   });
+  
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [tables, setTables] = useState<any[]>([]);
@@ -28,6 +46,16 @@ const SettingsPage = () => {
   const [newItem, setNewItem] = useState({ name: '', price: '', category_id: '' });
   const [newTable, setNewTable] = useState({ name: '', capacity: '' });
   const [newCategory, setNewCategory] = useState('');
+
+  const fontSizes = ['8px', '9px', '10px', '11px', '12px', '14px', '16px', '18px', '20px', '22px', '24px', '28px', '32px', '36px'];
+  const fontFamilies = [
+    { label: 'Monospace (Courier)', value: 'monospace' },
+    { label: 'Sans Serif (Arial)', value: 'sans-serif' },
+    { label: 'Serif (Times)', value: 'serif' },
+    { label: 'Courier New', value: "'Courier New', Courier, monospace" },
+    { label: 'Lucida Console', value: "'Lucida Console', Monaco, monospace" },
+    { label: 'Consolas', value: "Consolas, monospace" },
+  ];
 
   useEffect(() => {
     loadData();
@@ -94,104 +122,144 @@ const SettingsPage = () => {
     loadData();
   };
 
+  // --- Helpers ---
+  const FontControl = ({ label, sizeKey, familyKey }: { label: string, sizeKey: string, familyKey: string }) => (
+    <div className="border p-3 rounded-md bg-gray-50 mb-2">
+      <label className="block text-xs font-bold text-gray-700 mb-2 uppercase tracking-wide">{label}</label>
+      <div className="flex gap-2">
+        <div className="flex-1">
+          <select 
+            className="w-full p-2 border rounded-md text-sm bg-white" 
+            value={settings[sizeKey as keyof typeof settings] || '12px'} 
+            onChange={e => setSettings({...settings, [sizeKey]: e.target.value})}
+          >
+            {fontSizes.map(size => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </div>
+        <div className="flex-[2]">
+          <select 
+            className="w-full p-2 border rounded-md text-sm bg-white" 
+            value={settings[familyKey as keyof typeof settings] || 'monospace'} 
+            onChange={e => setSettings({...settings, [familyKey]: e.target.value})}
+          >
+             {fontFamilies.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+
   // --- Bill Preview Component ---
   const BillPreview = () => {
     // Printable areas: 2"->58mm, 3"->76mm, 4"->110mm
     const width = settings.paper_size === '58mm' ? '52mm' : settings.paper_size === '100mm' ? '104mm' : '70mm';
-    const borderStyle = settings.line_pattern === 'solid' ? '1px solid #000' : settings.line_pattern === 'double' ? '3px double #000' : '1px dashed #000';
-    const fontFamily = settings.font_family || 'monospace';
+    
+    const dividerType = settings.divider_type || 'css';
+    const dividerChar = settings.divider_character || '-';
+    
+    let Divider;
+    if (dividerType === 'text') {
+       const repeatCount = settings.paper_size === '58mm' ? 32 : settings.paper_size === '100mm' ? 64 : 42;
+       Divider = () => <div className="text-center overflow-hidden font-mono whitespace-nowrap">{dividerChar.repeat(repeatCount)}</div>;
+    } else {
+       const borderStyle = settings.line_pattern === 'solid' ? '1px solid #000' : settings.line_pattern === 'double' ? '3px double #000' : '1px dashed #000';
+       Divider = () => <div style={{ borderTop: borderStyle, width: '100%' }}></div>;
+    }
 
     return (
-      <div className="bg-gray-100 p-4 rounded border flex justify-center overflow-auto">
+      <div className="bg-gray-100 p-4 rounded border flex justify-center overflow-auto max-h-[600px]">
         <div style={{ 
           width: width, 
           backgroundColor: 'white', 
-          padding: '0', // No padding as requested
-          fontFamily: fontFamily, 
-          fontSize: settings.font_size_body,
+          padding: '0', 
           boxShadow: '0 2px 5px rgba(0,0,0,0.1)',
           color: 'black',
           boxSizing: 'border-box'
         }}>
           {/* Header */}
-          <div className="text-center mb-2">
-            <div style={{ fontSize: settings.font_size_header, fontWeight: 'bold', textTransform: 'uppercase', wordWrap: 'break-word' }}>
+          <div className="text-center mb-1" style={{ fontFamily: settings.font_family_header, fontSize: settings.font_size_header }}>
+            <div style={{ fontWeight: 'bold', textTransform: 'uppercase', wordWrap: 'break-word' }}>
               {settings.hotel_name || 'HOTEL NAME'}
             </div>
+          </div>
+          <div className="text-center mb-2" style={{ fontFamily: settings.font_family_address, fontSize: settings.font_size_address }}>
             <div style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{settings.hotel_address || 'Address Line 1'}</div>
           </div>
 
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
+          <div className="my-1"><Divider /></div>
 
-          {/* Name Field */}
-          <div className="mb-2 flex">
-            <span>Name: </span>
-            <span style={{ borderBottom: '1px solid black', flexGrow: 1, marginLeft: '5px' }}></span>
+          {/* Body Section */}
+          <div style={{ fontFamily: settings.font_family_body, fontSize: settings.font_size_body }}>
+            {/* Name Field */}
+            <div className="mb-2 flex">
+              <span>Name: </span>
+              <span style={{ borderBottom: '1px solid black', flexGrow: 1, marginLeft: '5px' }}></span>
+            </div>
+
+            <div className="my-1"><Divider /></div>
+
+            {/* Metadata Grid */}
+            <div className="flex flex-wrap justify-between mb-2 leading-snug">
+              <div style={{ width: '50%' }}>Date: {new Date().toLocaleDateString('en-GB')}</div>
+              <div style={{ width: '50%', textAlign: 'right', fontWeight: 'bold' }}>Dine In: T5</div>
+              
+              <div style={{ width: '50%' }}>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+              <div style={{ width: '50%', textAlign: 'right' }}>Bill No.: 7656</div>
+              
+              {settings.show_cashier === 'true' && (
+                <div style={{ width: '100%', marginTop: '2px' }}>Cashier: {settings.cashier_name}</div>
+              )}
+            </div>
+
+            <div className="my-1"><Divider /></div>
+
+            {/* Items Header */}
+            <div className="flex font-bold mb-1">
+              <span style={{ width: '40%' }}>Item</span>
+              <span style={{ width: '15%', textAlign: 'right' }}>Qty</span>
+              <span style={{ width: '22%', textAlign: 'right' }}>Price</span>
+              <span style={{ width: '23%', textAlign: 'right' }}>Amount</span>
+            </div>
+
+            <div className="my-1"><Divider /></div>
+
+            {/* Items List */}
+            <div className="space-y-1">
+               <div className="flex">
+                 <span style={{ width: '40%', wordBreak: 'break-all' }}>Crispy Chicken Burger</span>
+                 <span style={{ width: '15%', textAlign: 'right' }}>1</span>
+                 <span style={{ width: '22%', textAlign: 'right' }}>130.00</span>
+                 <span style={{ width: '23%', textAlign: 'right' }}>130.00</span>
+               </div>
+               <div className="flex">
+                 <span style={{ width: '40%', wordBreak: 'break-all' }}>Pepsi-250ml</span>
+                 <span style={{ width: '15%', textAlign: 'right' }}>1</span>
+                 <span style={{ width: '22%', textAlign: 'right' }}>20.00</span>
+                 <span style={{ width: '23%', textAlign: 'right' }}>20.00</span>
+               </div>
+            </div>
+
+            <div className="my-1"><Divider /></div>
+
+            {/* Totals */}
+            <div className="flex justify-between font-bold mb-2">
+              <span>Total Qty: 2</span>
+              <span>Sub Total: 150.00</span>
+            </div>
+
+            <div className="my-1"><Divider /></div>
+
+            {/* Grand Total */}
+            <div className="flex justify-between items-center text-lg font-bold my-2">
+              <span>Grand Total</span>
+              <span>₹ 150.00</span>
+            </div>
+
+             <div className="my-1"><Divider /></div>
           </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          {/* Metadata Grid - Updated to Flex */}
-          <div className="flex flex-wrap justify-between mb-2">
-            <div style={{ width: '50%' }}>Date: {new Date().toLocaleDateString('en-GB')}</div>
-            <div style={{ width: '50%', textAlign: 'right', fontWeight: 'bold' }}>Dine In: T5</div>
-            
-            <div style={{ width: '50%' }}>{new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
-            <div style={{ width: '50%', textAlign: 'right' }}>Bill No.: 7656</div>
-            
-            {settings.show_cashier === 'true' && (
-              <div style={{ width: '100%', marginTop: '2px' }}>Cashier: {settings.cashier_name}</div>
-            )}
-          </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          {/* Items Header - Updated Widths */}
-          <div className="flex text-sm font-bold mb-1">
-            <span style={{ width: '40%' }}>Item</span>
-            <span style={{ width: '15%', textAlign: 'right' }}>Qty</span>
-            <span style={{ width: '22%', textAlign: 'right' }}>Price</span>
-            <span style={{ width: '23%', textAlign: 'right' }}>Amount</span>
-          </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          {/* Items List - Updated Widths */}
-          <div className="space-y-1">
-             <div className="flex">
-               <span style={{ width: '40%', wordBreak: 'break-all' }}>Crispy Chicken Burger</span>
-               <span style={{ width: '15%', textAlign: 'right' }}>1</span>
-               <span style={{ width: '22%', textAlign: 'right' }}>130.00</span>
-               <span style={{ width: '23%', textAlign: 'right' }}>130.00</span>
-             </div>
-             <div className="flex">
-               <span style={{ width: '40%', wordBreak: 'break-all' }}>Pepsi-250ml</span>
-               <span style={{ width: '15%', textAlign: 'right' }}>1</span>
-               <span style={{ width: '22%', textAlign: 'right' }}>20.00</span>
-               <span style={{ width: '23%', textAlign: 'right' }}>20.00</span>
-             </div>
-          </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          {/* Totals */}
-          <div className="flex justify-between font-bold mb-2">
-            <span>Total Qty: 2</span>
-            <span>Sub Total: 150.00</span>
-          </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
-
-          {/* Grand Total */}
-          <div className="flex justify-between items-center text-lg font-bold my-2">
-            <span>Grand Total</span>
-            <span>₹ 150.00</span>
-          </div>
-
-          <div style={{ borderTop: borderStyle, margin: '5px 0' }}></div>
 
           {/* Footer */}
-          <div className="text-center mt-2 text-xs">
+          <div className="text-center mt-2" style={{ fontFamily: settings.font_family_footer, fontSize: settings.font_size_footer }}>
             <div className="mb-1">Thank You, Visit Again</div>
             {settings.bill_footer && <div>{settings.bill_footer}</div>}
           </div>
@@ -342,95 +410,115 @@ const SettingsPage = () => {
       {activeTab === 'bill' && (
         <div className="flex gap-6">
           {/* Settings Form */}
-          <div className="flex-1 bg-white p-6 rounded-lg shadow-md space-y-4">
+          <div className="flex-1 bg-white p-6 rounded-lg shadow-md space-y-4 max-h-[700px] overflow-y-auto">
             <h2 className="text-xl font-bold mb-4">Bill Configuration</h2>
             
-            <div>
+            {/* Paper & Layout */}
+            <div className="border-b pb-4 mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">Paper Size</label>
-              <select className="w-full p-2 border rounded-md" value={settings.paper_size || '80mm'} onChange={e => setSettings({...settings, paper_size: e.target.value})}>
+              <select className="w-full p-2 border rounded-md mb-2" value={settings.paper_size || '80mm'} onChange={e => setSettings({...settings, paper_size: e.target.value})}>
                 <option value="58mm">2 Inch (58mm)</option>
                 <option value="80mm">3 Inch (80mm)</option>
                 <option value="100mm">4 Inch (100mm)</option>
               </select>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Header Font Size</label>
-                <select className="w-full p-2 border rounded-md" value={settings.font_size_header || '16px'} onChange={e => setSettings({...settings, font_size_header: e.target.value})}>
-                  <option value="14px">Small (14px)</option>
-                  <option value="16px">Medium (16px)</option>
-                  <option value="18px">Large (18px)</option>
-                  <option value="20px">Extra Large (20px)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Body Font Size</label>
-                <select className="w-full p-2 border rounded-md" value={settings.font_size_body || '12px'} onChange={e => setSettings({...settings, font_size_body: e.target.value})}>
-                  <option value="10px">Small (10px)</option>
-                  <option value="12px">Medium (12px)</option>
-                  <option value="14px">Large (14px)</option>
-                </select>
+            {/* Typography Section */}
+            <div className="border-b pb-4 mb-4">
+              <h3 className="font-semibold text-gray-600 mb-2">Typography</h3>
+              <FontControl label="Header (Hotel Name)" sizeKey="font_size_header" familyKey="font_family_header" />
+              <FontControl label="Sub-Header (Address)" sizeKey="font_size_address" familyKey="font_family_address" />
+              <FontControl label="Body (Items/Table)" sizeKey="font_size_body" familyKey="font_family_body" />
+              <FontControl label="Footer" sizeKey="font_size_footer" familyKey="font_family_footer" />
+            </div>
+
+            {/* Divider Settings */}
+            <div className="border-b pb-4 mb-4">
+              <h3 className="font-semibold text-gray-600 mb-2">Divider/Lines</h3>
+              <div className="flex gap-2 mb-2">
+                <div className="flex-1">
+                   <label className="block text-xs font-bold text-gray-700 mb-1">Type</label>
+                   <select 
+                     className="w-full p-2 border rounded-md text-sm" 
+                     value={settings.divider_type || 'css'} 
+                     onChange={e => setSettings({...settings, divider_type: e.target.value})}
+                   >
+                     <option value="css">Line (CSS)</option>
+                     <option value="text">Character (Text)</option>
+                   </select>
+                </div>
+                <div className="flex-1">
+                  {settings.divider_type === 'text' ? (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Character</label>
+                      <input 
+                        type="text" 
+                        maxLength={1}
+                        className="w-full p-2 border rounded-md text-sm text-center font-mono" 
+                        value={settings.divider_character || '-'} 
+                        onChange={e => setSettings({...settings, divider_character: e.target.value})} 
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Style</label>
+                      <select 
+                        className="w-full p-2 border rounded-md text-sm" 
+                        value={settings.line_pattern || 'dashed'} 
+                        onChange={e => setSettings({...settings, line_pattern: e.target.value})}
+                      >
+                        <option value="dashed">Dashed (---)</option>
+                        <option value="solid">Solid (___)</option>
+                        <option value="double">Double (===)</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
+            {/* Content & Metadata */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Line Pattern</label>
-              <select className="w-full p-2 border rounded-md" value={settings.line_pattern || 'dashed'} onChange={e => setSettings({...settings, line_pattern: e.target.value})}>
-                <option value="dashed">Dashed (---)</option>
-                <option value="solid">Solid (___)</option>
-                <option value="double">Double (===)</option>
-              </select>
-            </div>
+              <h3 className="font-semibold text-gray-600 mb-2">Content</h3>
+              <div className="space-y-2">
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Cashier Name (Display)</label>
+                  <input 
+                    type="text" 
+                    className="w-full p-2 border rounded-md text-sm" 
+                    value={settings.cashier_name || ''} 
+                    onChange={e => setSettings({...settings, cashier_name: e.target.value})}
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Font Family</label>
-              <select className="w-full p-2 border rounded-md" value={settings.font_family || 'monospace'} onChange={e => setSettings({...settings, font_family: e.target.value})}>
-                <option value="monospace">Monospace (Courier)</option>
-                <option value="sans-serif">Sans Serif (Arial/Helvetica)</option>
-                <option value="serif">Serif (Times New Roman)</option>
-                <option value="'Courier New', Courier, monospace">Courier New</option>
-                <option value="'Lucida Console', Monaco, monospace">Lucida Console</option>
-              </select>
-            </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Bill Footer Text</label>
+                  <textarea 
+                    className="w-full p-2 border rounded-md text-sm" 
+                    rows={2}
+                    value={settings.bill_footer || ''} 
+                    onChange={e => setSettings({...settings, bill_footer: e.target.value})}
+                  />
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cashier Name (Display)</label>
-              <input 
-                type="text" 
-                className="w-full p-2 border rounded-md" 
-                value={settings.cashier_name || ''} 
-                onChange={e => setSettings({...settings, cashier_name: e.target.value})}
-                placeholder="e.g. Biller"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Bill Footer Text</label>
-              <textarea 
-                className="w-full p-2 border rounded-md" 
-                rows={3}
-                value={settings.bill_footer || ''} 
-                onChange={e => setSettings({...settings, bill_footer: e.target.value})}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center">
-                <input type="checkbox" id="showCashier" className="w-4 h-4" checked={settings.show_cashier === 'true'} onChange={e => setSettings({...settings, show_cashier: e.target.checked ? 'true' : 'false'})} />
-                <label htmlFor="showCashier" className="ml-2 text-sm font-medium text-gray-700">Show Cashier Name</label>
-              </div>
-              <div className="flex items-center">
-                <input type="checkbox" id="showToken" className="w-4 h-4" checked={settings.show_token === 'true'} onChange={e => setSettings({...settings, show_token: e.target.checked ? 'true' : 'false'})} />
-                <label htmlFor="showToken" className="ml-2 text-sm font-medium text-gray-700">Show Token Number</label>
-              </div>
-              <div className="flex items-center">
-                <input type="checkbox" id="showLogo" className="w-4 h-4" checked={settings.show_logo === 'true'} onChange={e => setSettings({...settings, show_logo: e.target.checked ? 'true' : 'false'})} />
-                <label htmlFor="showLogo" className="ml-2 text-sm font-medium text-gray-700">Show Logo (Placeholder)</label>
+                <div className="space-y-1 pt-2">
+                  <div className="flex items-center">
+                    <input type="checkbox" id="showCashier" className="w-4 h-4" checked={settings.show_cashier === 'true'} onChange={e => setSettings({...settings, show_cashier: e.target.checked ? 'true' : 'false'})} />
+                    <label htmlFor="showCashier" className="ml-2 text-sm text-gray-700">Show Cashier Name</label>
+                  </div>
+                  <div className="flex items-center">
+                    <input type="checkbox" id="showToken" className="w-4 h-4" checked={settings.show_token === 'true'} onChange={e => setSettings({...settings, show_token: e.target.checked ? 'true' : 'false'})} />
+                    <label htmlFor="showToken" className="ml-2 text-sm text-gray-700">Show Token Number</label>
+                  </div>
+                  <div className="flex items-center">
+                    <input type="checkbox" id="showLogo" className="w-4 h-4" checked={settings.show_logo === 'true'} onChange={e => setSettings({...settings, show_logo: e.target.checked ? 'true' : 'false'})} />
+                    <label htmlFor="showLogo" className="ml-2 text-sm text-gray-700">Show Logo (Placeholder)</label>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <button onClick={handleSaveSettings} className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Bill Settings</button>
+            <button onClick={handleSaveSettings} className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 sticky bottom-0">Save Bill Settings</button>
           </div>
 
           {/* Live Preview */}
