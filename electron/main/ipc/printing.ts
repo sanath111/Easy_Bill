@@ -209,7 +209,7 @@ export function setupPrintingHandlers() {
           <div class="body-section">
             ${!isKOT ? `
             <div class="name-field">
-              Name: __________________________
+              Name:
             </div>
             <div class="divider-container">${dividerHtml}</div>
             ` : ''}
@@ -277,7 +277,6 @@ export function setupPrintingHandlers() {
           
           ${!isKOT ? `
           <div class="footer-section">
-            <div>Thank You, Visit Again</div>
             ${settings.bill_footer ? `<div>${settings.bill_footer}</div>` : ''}
           </div>
           ` : ''}

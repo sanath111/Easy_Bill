@@ -193,7 +193,6 @@ const SettingsPage = () => {
             {/* Name Field */}
             <div className="mb-2 flex">
               <span>Name: </span>
-              <span style={{ borderBottom: '1px solid black', flexGrow: 1, marginLeft: '5px' }}></span>
             </div>
 
             <div className="my-1"><Divider /></div>
@@ -260,7 +259,6 @@ const SettingsPage = () => {
 
           {/* Footer */}
           <div className="text-center mt-2" style={{ fontFamily: settings.font_family_footer, fontSize: settings.font_size_footer }}>
-            <div className="mb-1">Thank You, Visit Again</div>
             {settings.bill_footer && <div>{settings.bill_footer}</div>}
           </div>
         </div>
