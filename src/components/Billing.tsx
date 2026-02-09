@@ -6,6 +6,7 @@ const Billing = () => {
   const { showToast } = useToast();
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
+  const [originalItems, setOriginalItems] = useState<any[]>([]);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,20 +152,35 @@ const Billing = () => {
     return cart.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   };
 
+  const getNewItemsOnly = (currentCart: any[], savedItems: any[]) => {
+    return currentCart.map(item => {
+      const saved = savedItems.find(s => s.id === item.id);
+      const savedQty = saved ? saved.quantity : 0;
+      const newQty = item.quantity - savedQty;
+      if (newQty > 0) {
+        return { ...item, quantity: newQty };
+      }
+      return null;
+    }).filter(Boolean);
+  };
+
   const refreshAfterAction = async () => {
     setCart([]);
+    setOriginalItems([]);
     setCurrentOrderId(null);
     
     loadPendingBills();
     if (searchInputRef.current) searchInputRef.current.focus();
   };
 
-  const handleSave = async (tableId: number | null = null) => {
+  const handleSave = async (tableId: number | null = null, itemsToPrint: any[] | null = null) => {
     try {
       if (cart.length === 0) {
           showToast('Cart is empty', 'error');
           return;
       }
+
+      const finalItemsToPrint = itemsToPrint || getNewItemsOnly(cart, originalItems);
 
       if (currentOrderId) {
         await window.api.saveOrder({
@@ -175,7 +191,7 @@ const Billing = () => {
         
         const currentOrder = pendingBills.find(o => o.id === currentOrderId);
         await window.api.printBill({ 
-          items: cart, 
+          items: finalItemsToPrint, 
           tableId: tableId, 
           type: 'KOT', 
           total: 0,
@@ -193,7 +209,7 @@ const Billing = () => {
         tableId: tableId
       });
       await window.api.printBill({ 
-        items: cart, 
+        items: cart, // For new order, print everything in cart
         tableId: tableId, 
         type: 'KOT', 
         total: 0,
@@ -208,9 +224,60 @@ const Billing = () => {
   };
 
   const confirmTablePopup = async () => {
-    const tableId = parseInt(tableInput);
+    const tableIdInput = parseInt(tableInput);
+    const tableId = tableIdInput === 0 ? null : tableIdInput;
     setShowTablePopup(false);
-    await handleSave(tableId === 0 ? null : tableId);
+
+    // MERGE LOGIC: If table is not takeaway and already exists in pending
+    if (tableId !== null) {
+      const existingOrder = pendingBills.find(o => o.table_id === tableId);
+      if (existingOrder && existingOrder.id !== currentOrderId) {
+        try {
+          // Normalize existing items
+          const existingItems = existingOrder.items.map((item: any) => ({
+            ...item,
+            name: item.item_name || item.name,
+            id: item.item_id || item.id
+          }));
+
+          // Merge: Add cart items to existing items
+          const mergedCart = [...existingItems];
+          cart.forEach(newItem => {
+            const index = mergedCart.findIndex(item => item.id === newItem.id);
+            if (index !== -1) {
+              mergedCart[index].quantity += newItem.quantity;
+            } else {
+              mergedCart.push({ ...newItem });
+            }
+          });
+
+          // Save merged order
+          await window.api.saveOrder({
+            orderId: existingOrder.id,
+            items: mergedCart,
+            tableId: tableId
+          });
+
+          // Print KOT only for "cart" (recently added)
+          await window.api.printBill({
+            items: cart,
+            tableId: tableId,
+            type: 'KOT',
+            total: 0,
+            tokenNumber: existingOrder.token_number
+          });
+
+          showToast('Added to existing table & KOT printed', 'success');
+          refreshAfterAction();
+          return;
+        } catch (error: any) {
+          showToast('Merge failed: ' + error.message, 'error');
+          return;
+        }
+      }
+    }
+
+    await handleSave(tableId);
   };
 
   const handlePrint = async () => {
@@ -432,6 +499,7 @@ const Billing = () => {
     }));
 
     setCurrentOrderId(order.id);
+    setOriginalItems(normalizedItems);
     setCart(normalizedItems);
   };
 
@@ -673,8 +741,8 @@ const Billing = () => {
                             : 'hover:bg-gray-200'
                       }`}
                     >
-                      <td className="p-2 font-bold">{order.table_id || 'TKWY'}</td>
-                      <td className="p-2">#{order.id}</td>
+                      <td className="p-2 font-bold">{order.table_id === null ? `P${order.token_number}` : order.table_id}</td>
+                      <td className="p-2">#{order.token_number}</td>
                       <td className="p-2">{order.items.length}</td>
                       <td className="p-2 font-bold text-right">₹{order.total_amount.toFixed(2)}</td>
                       <td className="p-2 text-right">
