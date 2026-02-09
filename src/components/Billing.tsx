@@ -8,6 +8,7 @@ const Billing = () => {
   const [cart, setCart] = useState<any[]>([]);
   const [originalItems, setOriginalItems] = useState<any[]>([]);
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
+  const [currentTokenNumber, setCurrentTokenNumber] = useState<number | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredItems, setFilteredItems] = useState<any[]>([]);
@@ -168,6 +169,7 @@ const Billing = () => {
     setCart([]);
     setOriginalItems([]);
     setCurrentOrderId(null);
+    setCurrentTokenNumber(null);
     
     await loadPendingBills();
     
@@ -564,6 +566,7 @@ const Billing = () => {
     }));
 
     setCurrentOrderId(order.id);
+    setCurrentTokenNumber(order.token_number);
     setOriginalItems(normalizedItems);
     setCart(normalizedItems);
   };
@@ -833,7 +836,7 @@ const Billing = () => {
       <div className="w-96 bg-white border border-gray-400 p-4 flex flex-col overflow-hidden shadow-sm">
         <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-2 flex-shrink-0 flex justify-between items-center">
             <span>Current Bill</span>
-            {currentOrderId && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">#{currentOrderId}</span>}
+            {currentTokenNumber && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">#{currentTokenNumber}</span>}
         </h2>
         
         <div className="flex-1 overflow-y-auto mb-3 border border-gray-200 bg-gray-50 p-2">
