@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('api', {
   
   getCategories: () => ipcRenderer.invoke('db:get-categories'),
   addCategory: (name: string) => ipcRenderer.invoke('db:add-category', name),
+  updateCategoryPrinter: (id: number, printerName: string | null) => ipcRenderer.invoke('db:update-category-printer', id, printerName),
   deleteCategory: (id: number) => ipcRenderer.invoke('db:delete-category', id),
 
   getMenuItems: () => ipcRenderer.invoke('db:get-menu-items'),

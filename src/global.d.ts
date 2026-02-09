@@ -6,6 +6,7 @@ export interface IElectronAPI {
 
   getCategories: () => Promise<any[]>;
   addCategory: (name: string) => Promise<any>;
+  updateCategoryPrinter: (id: number, printerName: string | null) => Promise<any>;
   deleteCategory: (id: number) => Promise<any>;
 
   getMenuItems: () => Promise<any[]>;

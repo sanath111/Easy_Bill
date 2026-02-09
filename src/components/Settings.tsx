@@ -36,6 +36,20 @@ const SettingsPage = () => {
     show_cashier: 'true',
     cashier_name: 'Cashier',
     bill_footer: '',
+
+    // Printer Settings
+    printer_mode: 'single', // single, multiple
+    single_printer_kot_type: 'single_kot', // single_kot, category_kot
+
+    // Numbering Settings
+    token_reset_daily: 'true',
+    bill_reset_daily: 'false',
+    token_prefix: '0',
+    bill_prefix: '0',
+
+    hotel_phone: '',
+    fssai_number: '',
+    gst_number: '',
   });
   
   const [menuItems, setMenuItems] = useState<any[]>([]);
@@ -122,6 +136,11 @@ const SettingsPage = () => {
     loadData();
   };
 
+  const handleUpdateCategoryPrinter = async (id: number, printerName: string) => {
+    await window.api.updateCategoryPrinter(id, printerName === '' ? null : printerName);
+    loadData();
+  };
+
   // --- Helpers ---
   const FontControl = ({ label, sizeKey, familyKey }: { label: string, sizeKey: string, familyKey: string }) => (
     <div className="border p-3 rounded-md bg-gray-50 mb-2">
@@ -184,6 +203,9 @@ const SettingsPage = () => {
           </div>
           <div className="text-center mb-2" style={{ fontFamily: settings.font_family_address, fontSize: settings.font_size_address }}>
             <div style={{ whiteSpace: 'pre-wrap', wordWrap: 'break-word' }}>{settings.hotel_address || 'Address Line 1'}</div>
+            {settings.hotel_phone && <div>Ph: {settings.hotel_phone}</div>}
+            {settings.gst_number && <div>GST: {settings.gst_number}</div>}
+            {settings.fssai_number && <div>FSSAI: {settings.fssai_number}</div>}
           </div>
 
           <div className="my-1"><Divider /></div>
@@ -282,6 +304,12 @@ const SettingsPage = () => {
         >
           Bill Settings
         </button>
+        <button 
+          className={`px-4 py-2 ${activeTab === 'printers' ? 'border-b-2 border-blue-600 font-bold text-blue-600' : 'text-gray-500'}`}
+          onClick={() => setActiveTab('printers')}
+        >
+          Printers
+        </button>
       </div>
 
       {/* General Tab Content */}
@@ -300,11 +328,16 @@ const SettingsPage = () => {
                 <input type="text" className="w-full p-2 border rounded-md" value={settings.hotel_address || ''} onChange={e => setSettings({...settings, hotel_address: e.target.value})} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Printer Name</label>
-                <select className="w-full p-2 border rounded-md" value={settings.printer_name || ''} onChange={e => setSettings({...settings, printer_name: e.target.value})}>
-                  <option value="">Select Printer</option>
-                  {printers.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
-                </select>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+                <input type="text" className="w-full p-2 border rounded-md" value={settings.hotel_phone || ''} onChange={e => setSettings({...settings, hotel_phone: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">GST Number</label>
+                <input type="text" className="w-full p-2 border rounded-md" value={settings.gst_number || ''} onChange={e => setSettings({...settings, gst_number: e.target.value})} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">FSSAI Number</label>
+                <input type="text" className="w-full p-2 border rounded-md" value={settings.fssai_number || ''} onChange={e => setSettings({...settings, fssai_number: e.target.value})} />
               </div>
               <div className="flex items-center mt-6">
                 <input type="checkbox" id="enableTables" className="w-4 h-4" checked={settings.enable_tables === 'true'} onChange={e => setSettings({...settings, enable_tables: e.target.checked ? 'true' : 'false'})} />
@@ -523,6 +556,198 @@ const SettingsPage = () => {
           <div className="w-96">
             <h2 className="text-xl font-bold mb-4">Live Preview</h2>
             <BillPreview />
+          </div>
+        </div>
+      )}
+
+      {/* Printer Settings Tab */}
+      {activeTab === 'printers' && (
+        <div className="space-y-6">
+          <div className="bg-white p-6 rounded-lg shadow-md">
+            <h2 className="text-xl font-bold mb-4">Printer Configuration</h2>
+            
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 mb-2">Printer Mode</label>
+              <div className="flex gap-4">
+                <label className="flex items-center">
+                  <input 
+                    type="radio" 
+                    className="w-4 h-4 mr-2" 
+                    name="printer_mode" 
+                    value="single" 
+                    checked={settings.printer_mode === 'single'} 
+                    onChange={e => setSettings({...settings, printer_mode: e.target.value})} 
+                  />
+                  Single Printer
+                </label>
+                <label className="flex items-center">
+                  <input 
+                    type="radio" 
+                    className="w-4 h-4 mr-2" 
+                    name="printer_mode" 
+                    value="multiple" 
+                    checked={settings.printer_mode === 'multiple'} 
+                    onChange={e => setSettings({...settings, printer_mode: e.target.value})} 
+                  />
+                  Multiple Printers (Category-wise)
+                </label>
+              </div>
+            </div>
+
+            {settings.printer_mode === 'single' ? (
+              <div className="space-y-4 border-t pt-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Default Printer</label>
+                  <select 
+                    className="w-full md:w-1/2 p-2 border rounded-md" 
+                    value={settings.printer_name || ''} 
+                    onChange={e => setSettings({...settings, printer_name: e.target.value})}
+                  >
+                    <option value="">Select Printer</option>
+                    {printers.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                  </select>
+                </div>
+                
+                <div className="mt-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">KOT Printing Style</label>
+                  <div className="space-y-2">
+                    <label className="flex items-center">
+                      <input 
+                        type="radio" 
+                        className="w-4 h-4 mr-2" 
+                        name="single_printer_kot_type" 
+                        value="single_kot" 
+                        checked={settings.single_printer_kot_type === 'single_kot'} 
+                        onChange={e => setSettings({...settings, single_printer_kot_type: e.target.value})} 
+                      />
+                      Single KOT (All items in one ticket)
+                    </label>
+                    <label className="flex items-center">
+                      <input 
+                        type="radio" 
+                        className="w-4 h-4 mr-2" 
+                        name="single_printer_kot_type" 
+                        value="category_kot" 
+                        checked={settings.single_printer_kot_type === 'category_kot'} 
+                        onChange={e => setSettings({...settings, single_printer_kot_type: e.target.value})} 
+                      />
+                      Category-wise KOTs (Separate tickets for each category)
+                    </label>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 border-t pt-4">
+                <p className="text-sm text-gray-500 mb-4">Assign a specific printer to each category. If a category has no printer assigned, it will use the default printer.</p>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Default Printer (Fallback)</label>
+                    <select 
+                      className="w-full p-2 border rounded-md" 
+                      value={settings.printer_name || ''} 
+                      onChange={e => setSettings({...settings, printer_name: e.target.value})}
+                    >
+                      <option value="">Select Printer</option>
+                      {printers.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-6 overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="p-3">Category Name</th>
+                        <th className="p-3">Assigned Printer</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {categories.map(cat => (
+                        <tr key={cat.id} className="border-b hover:bg-gray-50">
+                          <td className="p-3 font-medium">{cat.name}</td>
+                          <td className="p-3">
+                            <select 
+                              className="w-full p-2 border rounded-md text-sm" 
+                              value={cat.printer_name || ''} 
+                              onChange={e => handleUpdateCategoryPrinter(cat.id, e.target.value)}
+                            >
+                              <option value="">Use Default</option>
+                              {printers.map((p: any) => <option key={p.name} value={p.name}>{p.name}</option>)}
+                            </select>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-bold mb-4">Token & Bill Numbering</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Token Numbering */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-blue-600 border-b pb-1">Token (KOT) Numbering</h4>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center text-sm font-medium text-gray-700">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 mr-2" 
+                        checked={settings.token_reset_daily === 'true'} 
+                        onChange={e => setSettings({...settings, token_reset_daily: e.target.checked ? 'true' : 'false'})} 
+                      />
+                      Reset Daily
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Starting Number (or Prefix)</label>
+                    <input 
+                      type="number" 
+                      className="w-full p-2 border rounded-md text-sm" 
+                      value={settings.token_prefix || '0'} 
+                      onChange={e => setSettings({...settings, token_prefix: e.target.value})}
+                      placeholder="e.g. 100"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">If set to 100, the first token will be 101.</p>
+                  </div>
+                </div>
+
+                {/* Bill Numbering */}
+                <div className="space-y-4">
+                  <h4 className="font-semibold text-green-600 border-b pb-1">Bill Numbering</h4>
+                  <div className="flex items-center gap-4">
+                    <label className="flex items-center text-sm font-medium text-gray-700">
+                      <input 
+                        type="checkbox" 
+                        className="w-4 h-4 mr-2" 
+                        checked={settings.bill_reset_daily === 'true'} 
+                        onChange={e => setSettings({...settings, bill_reset_daily: e.target.checked ? 'true' : 'false'})} 
+                      />
+                      Reset Daily
+                    </label>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">Starting Number (or Prefix)</label>
+                    <input 
+                      type="number" 
+                      className="w-full p-2 border rounded-md text-sm" 
+                      value={settings.bill_prefix || '0'} 
+                      onChange={e => setSettings({...settings, bill_prefix: e.target.value})}
+                      placeholder="e.g. 5000"
+                    />
+                    <p className="text-[10px] text-gray-500 mt-1">If set to 5000, the first bill will be 5001.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8 pt-4 border-t">
+              <button onClick={handleSaveSettings} className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700">
+                Save Printer Settings
+              </button>
+            </div>
           </div>
         </div>
       )}

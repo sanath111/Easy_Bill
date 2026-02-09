@@ -24,7 +24,8 @@ export function initDatabase() {
 
   CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL
+      name TEXT NOT NULL,
+      printer_name TEXT
   );
 
   CREATE TABLE IF NOT EXISTS menu_items (
@@ -40,6 +41,8 @@ export function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       table_id INTEGER,
       status TEXT DEFAULT 'open', -- open, closed, cancelled
+      token_number INTEGER,
+      bill_number INTEGER,
       total_amount REAL DEFAULT 0.0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       closed_at DATETIME,
@@ -73,6 +76,19 @@ export function initDatabase() {
     if (!hasItemId) {
       console.log('Migrating: Adding item_id to order_items');
       db.prepare("ALTER TABLE order_items ADD COLUMN item_id INTEGER").run();
+    }
+
+    const categoryTableInfo = db.prepare("PRAGMA table_info(categories)").all() as any[];
+    const hasPrinterName = categoryTableInfo.some(col => col.name === 'printer_name');
+    if (!hasPrinterName) {
+      db.prepare("ALTER TABLE categories ADD COLUMN printer_name TEXT").run();
+    }
+
+    const ordersTableInfo = db.prepare("PRAGMA table_info(orders)").all() as any[];
+    const hasTokenNum = ordersTableInfo.some(col => col.name === 'token_number');
+    if (!hasTokenNum) {
+      db.prepare("ALTER TABLE orders ADD COLUMN token_number INTEGER").run();
+      db.prepare("ALTER TABLE orders ADD COLUMN bill_number INTEGER").run();
     }
   } catch (e) {
     console.error('Migration failed:', e);
@@ -115,6 +131,51 @@ export function initDatabase() {
     insert.run('font_family', 'monospace');
     insert.run('show_cashier', 'true');
     insert.run('cashier_name', 'Cashier');
+
+    // Multi-printer settings
+    insert.run('printer_mode', 'single'); // single or multiple
+    insert.run('single_printer_kot_type', 'single_kot'); // single_kot or category_kot
+
+    // Numbering settings
+    insert.run('token_reset_daily', 'true');
+    insert.run('bill_reset_daily', 'false');
+    insert.run('token_prefix', '0');
+    insert.run('bill_prefix', '0');
+    insert.run('last_reset_date', new Date().toISOString().split('T')[0]);
+
+    insert.run('hotel_phone', '');
+    insert.run('fssai_number', '');
+    insert.run('gst_number', '');
+  } else {
+    // Migration for existing settings: Check and add missing printer settings
+    const existingSettings = getSettings() as any;
+    const insert = db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)');
+    if (existingSettings.printer_mode === undefined) {
+      insert.run('printer_mode', 'single');
+    }
+    if (existingSettings.single_printer_kot_type === undefined) {
+      insert.run('single_printer_kot_type', 'single_kot');
+    }
+    
+    // Numbering migrations
+    if (existingSettings.token_reset_daily === undefined) {
+      insert.run('token_reset_daily', 'true');
+      insert.run('bill_reset_daily', 'false');
+      insert.run('token_prefix', '0');
+      insert.run('bill_prefix', '0');
+      insert.run('last_reset_date', new Date().toISOString().split('T')[0]);
+    }
+
+    // Contact and Tax migrations
+    if (existingSettings.hotel_phone === undefined) {
+      insert.run('hotel_phone', '');
+    }
+    if (existingSettings.fssai_number === undefined) {
+      insert.run('fssai_number', '');
+    }
+    if (existingSettings.gst_number === undefined) {
+      insert.run('gst_number', '');
+    }
   }
 }
 
@@ -139,9 +200,14 @@ export function getCategories() {
   return db.prepare('SELECT * FROM categories').all();
 }
 
-export function addCategory(name: string) {
-  const stmt = db.prepare('INSERT INTO categories (name) VALUES (?)');
-  return stmt.run(name);
+export function addCategory(name: string, printerName?: string) {
+  const stmt = db.prepare('INSERT INTO categories (name, printer_name) VALUES (?, ?)');
+  return stmt.run(name, printerName || null);
+}
+
+export function updateCategoryPrinter(id: number, printerName: string | null) {
+  const stmt = db.prepare('UPDATE categories SET printer_name = ? WHERE id = ?');
+  return stmt.run(printerName, id);
 }
 
 export function deleteCategory(id: number) {
@@ -178,17 +244,51 @@ export function saveSettings(settings: any) {
   return { success: true };
 }
 
+function getNextNumber(type: 'token' | 'bill') {
+  const settings = getSettings() as any;
+  const resetDaily = settings[`${type}_reset_daily`] === 'true';
+  const prefix = parseInt(settings[`${type}_prefix`] || '0');
+  const lastResetDate = settings.last_reset_date;
+  const today = new Date().toISOString().split('T')[0];
+
+  let needsReset = false;
+  if (resetDaily && lastResetDate !== today) {
+    needsReset = true;
+    // Update last_reset_date
+    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('last_reset_date', today);
+  }
+
+  const column = `${type}_number`;
+  let query = `SELECT MAX(${column}) as maxNum FROM orders`;
+  let params: any[] = [];
+
+  if (resetDaily) {
+    query += " WHERE created_at >= ?";
+    params.push(`${today} 00:00:00`);
+  }
+
+  const result = db.prepare(query).get(...params) as { maxNum: number | null };
+  let nextNum = (result.maxNum || prefix) + 1;
+  
+  if (needsReset) {
+      nextNum = prefix + 1;
+  }
+
+  return nextNum;
+}
+
 // Orders
 export function createOrder(tableId: number | null) {
   const transaction = db.transaction(() => {
-    const stmt = db.prepare('INSERT INTO orders (table_id, status) VALUES (?, ?)');
-    const info = stmt.run(tableId, 'open');
+    const tokenNumber = getNextNumber('token');
+    const stmt = db.prepare('INSERT INTO orders (table_id, status, token_number) VALUES (?, ?, ?)');
+    const info = stmt.run(tableId, 'open', tokenNumber);
     
     if (tableId) {
       db.prepare("UPDATE tables SET status = 'occupied' WHERE id = ?").run(tableId);
     }
     
-    return { id: info.lastInsertRowid, tableId, status: 'open', total_amount: 0 };
+    return { id: info.lastInsertRowid, tableId, status: 'open', total_amount: 0, token_number: tokenNumber };
   });
   return transaction();
 }
@@ -251,14 +351,17 @@ export function saveOrder(orderId: number, items: any[], tableId: number | null)
 
 export function closeOrder(orderId: number, total: number, items: any[], paymentMethod: string = 'Cash', tableId: number | null) {
   const transaction = db.transaction(() => {
-    // 1. Update Order
+    // 1. Get Bill Number
+    const billNumber = getNextNumber('bill');
+
+    // 2. Update Order
     db.prepare(`
       UPDATE orders 
-      SET status = 'closed', total_amount = ?, closed_at = CURRENT_TIMESTAMP, payment_method = ? 
+      SET status = 'closed', total_amount = ?, closed_at = CURRENT_TIMESTAMP, payment_method = ?, bill_number = ?
       WHERE id = ?
-    `).run(total, paymentMethod, orderId);
+    `).run(total, paymentMethod, billNumber, orderId);
 
-    // 2. Clear and Re-insert items (to ensure final state matches)
+    // 3. Clear and Re-insert items (to ensure final state matches)
     db.prepare('DELETE FROM order_items WHERE order_id = ?').run(orderId);
     
     const insertItem = db.prepare(`
@@ -274,10 +377,11 @@ export function closeOrder(orderId: number, total: number, items: any[], payment
     if (tableId) {
       db.prepare("UPDATE tables SET status = 'available' WHERE id = ?").run(tableId);
     }
+
+    return { billNumber };
   });
 
-  transaction();
-  return { success: true };
+  return transaction();
 }
 
 export function deleteOrder(orderId: number) {

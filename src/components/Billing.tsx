@@ -222,7 +222,16 @@ const Billing = () => {
           items: cart,
           tableId: selectedTable === 0 ? null : selectedTable
         });
-        await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        
+        // Find the order in pending list to get its token number
+        const currentOrder = pendingBills.find(o => o.id === currentOrderId);
+        await window.api.printBill({ 
+          items: cart, 
+          tableId: selectedTable, 
+          type: 'KOT', 
+          total: 0,
+          tokenNumber: currentOrder?.token_number 
+        });
         showToast('Order updated & KOT printed', 'success');
         refreshAfterAction();
         return;
@@ -235,7 +244,13 @@ const Billing = () => {
           items: cart,
           tableId: selectedTable
         });
-        await window.api.printBill({ items: cart, tableId: selectedTable, type: 'KOT', total: 0 });
+        await window.api.printBill({ 
+          items: cart, 
+          tableId: selectedTable, 
+          type: 'KOT', 
+          total: 0,
+          tokenNumber: order.token_number 
+        });
         showToast('Order created & KOT printed', 'success');
         refreshAfterAction();
         return;
@@ -273,7 +288,8 @@ const Billing = () => {
         items: cart, 
         tableId: tableId === 0 ? null : tableId, 
         type: 'KOT', 
-        total: 0 
+        total: 0,
+        tokenNumber: order.token_number
       });
 
       setShowTablePopup(false);
@@ -299,13 +315,18 @@ const Billing = () => {
       const total = calculateTotal();
       let orderId = currentOrderId;
       const dbTableId = selectedTable === 0 ? null : selectedTable;
+      let tokenNumber = null;
 
       if (!orderId) {
         const order = await window.api.createOrder(dbTableId);
         orderId = order.id;
+        tokenNumber = order.token_number;
+      } else {
+        const currentOrder = pendingBills.find(o => o.id === currentOrderId);
+        tokenNumber = currentOrder?.token_number;
       }
 
-      await window.api.closeOrder({
+      const resultClose = await window.api.closeOrder({
         orderId: orderId!,
         total: total,
         items: cart,
@@ -316,17 +337,19 @@ const Billing = () => {
       const billData = {
         items: cart,
         total: total,
-        tableId: dbTableId
+        tableId: dbTableId,
+        billNumber: resultClose.billNumber,
+        tokenNumber: tokenNumber
       };
 
-      const result = await window.api.printBill(billData);
+      const resultPrint = await window.api.printBill(billData);
       
-      if (result.success) {
+      if (resultPrint.success) {
         console.log('Bill printed successfully!');
         showToast('Bill printed successfully!', 'success');
         refreshAfterAction();
       } else {
-        showToast('Printing failed: ' + result.error, 'error');
+        showToast('Printing failed: ' + resultPrint.error, 'error');
       }
     } catch (error: any) {
       showToast('Error printing bill: ' + error.message, 'error');

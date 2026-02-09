@@ -7,6 +7,7 @@ import {
   deleteTable, 
   getCategories, 
   addCategory, 
+  updateCategoryPrinter,
   deleteCategory, 
   getMenuItems, 
   addMenuItem, 
@@ -82,6 +83,7 @@ app.whenReady().then(async () => {
 
   ipcMain.handle('db:get-categories', () => getCategories());
   ipcMain.handle('db:add-category', (_, name) => addCategory(name));
+  ipcMain.handle('db:update-category-printer', (_, id, printerName) => updateCategoryPrinter(id, printerName));
   ipcMain.handle('db:delete-category', (_, id) => deleteCategory(id));
 
   ipcMain.handle('db:get-menu-items', () => getMenuItems());
