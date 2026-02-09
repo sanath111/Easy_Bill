@@ -164,13 +164,64 @@ const Billing = () => {
     }).filter(Boolean);
   };
 
-  const refreshAfterAction = async () => {
+  const refreshAfterAction = async (shouldFocusPending = false) => {
     setCart([]);
     setOriginalItems([]);
     setCurrentOrderId(null);
     
-    loadPendingBills();
-    if (searchInputRef.current) searchInputRef.current.focus();
+    await loadPendingBills();
+    
+    if (shouldFocusPending) {
+      setTimeout(() => {
+        if (pendingSearchInputRef.current) {
+          pendingSearchInputRef.current.focus();
+          // After focus, we can't easily set the selected index because it's reset by the focus event usually
+          // or needs to wait for the state update. We'll set it to 0 (latest order).
+          setPendingSelectedIndex(0);
+        }
+      }, 100);
+    } else {
+      if (searchInputRef.current) searchInputRef.current.focus();
+    }
+  };
+
+  const handleQuickPrintBill = async (order: any) => {
+    try {
+      const normalizedItems = order.items.map((item: any) => ({
+        ...item,
+        name: item.item_name || item.name,
+        id: item.item_id || item.id
+      }));
+
+      const total = normalizedItems.reduce((sum: number, item: any) => sum + (item.price * item.quantity), 0);
+
+      const resultClose = await window.api.closeOrder({
+        orderId: order.id,
+        total: total,
+        items: normalizedItems,
+        paymentMethod: 'Cash',
+        tableId: order.table_id
+      });
+
+      const billData = {
+        items: normalizedItems,
+        total: total,
+        tableId: order.table_id,
+        billNumber: resultClose.billNumber,
+        tokenNumber: order.token_number
+      };
+
+      const resultPrint = await window.api.printBill(billData);
+      
+      if (resultPrint.success) {
+        showToast('Bill printed successfully!', 'success');
+        refreshAfterAction(false); // Back to search after closing
+      } else {
+        showToast('Printing failed: ' + resultPrint.error, 'error');
+      }
+    } catch (error: any) {
+      showToast('Error printing bill: ' + error.message, 'error');
+    }
   };
 
   const handleSave = async (tableId: number | null = null, itemsToPrint: any[] | null = null) => {
@@ -198,7 +249,7 @@ const Billing = () => {
           tokenNumber: currentOrder?.token_number 
         });
         showToast('Order updated & KOT printed', 'success');
-        refreshAfterAction();
+        refreshAfterAction(true);
         return;
       }
 
@@ -216,7 +267,7 @@ const Billing = () => {
         tokenNumber: order.token_number 
       });
       showToast('Order created & KOT printed', 'success');
-      refreshAfterAction();
+      refreshAfterAction(true);
     } catch (error: any) {
       showToast('Error saving order: ' + error.message, 'error');
       console.error(error);
@@ -268,7 +319,7 @@ const Billing = () => {
           });
 
           showToast('Added to existing table & KOT printed', 'success');
-          refreshAfterAction();
+          refreshAfterAction(true);
           return;
         } catch (error: any) {
           showToast('Merge failed: ' + error.message, 'error');
@@ -351,6 +402,12 @@ const Billing = () => {
   const handleMainKeyDown = (e: React.KeyboardEvent) => {
     if (showQuantityPopup || showTablePopup || showDeletePopup) return;
 
+    // Avoid handling keys if the focus is in Pending section and they are handled there
+    if (document.activeElement === pendingSearchInputRef.current && 
+        ['ArrowDown', 'ArrowUp', 'Enter', 'Delete', 'Escape'].includes(e.key)) {
+      return;
+    }
+
     // F1: Focus Search
     if (e.key === 'F1') {
       e.preventDefault();
@@ -420,17 +477,25 @@ const Billing = () => {
     // Only handle nav if we have bills
     if (filteredPendingBills.length === 0) return;
 
+    // Stop propagation for navigation keys to prevent conflict with handleMainKeyDown
+    if (['ArrowDown', 'ArrowUp', 'Enter', 'Delete', 'Escape'].includes(e.key)) {
+      e.stopPropagation();
+    }
+
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setPendingSelectedIndex(prev => (prev + 1) % filteredPendingBills.length);
+      const nextIndex = (pendingSelectedIndex + 1) % filteredPendingBills.length;
+      setPendingSelectedIndex(nextIndex);
+      loadOrderToCart(filteredPendingBills[nextIndex]);
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setPendingSelectedIndex(prev => (prev - 1 + filteredPendingBills.length) % filteredPendingBills.length);
+      const nextIndex = (pendingSelectedIndex - 1 + filteredPendingBills.length) % filteredPendingBills.length;
+      setPendingSelectedIndex(nextIndex);
+      loadOrderToCart(filteredPendingBills[nextIndex]);
     } else if (e.key === 'Enter') {
       e.preventDefault();
       if (pendingSelectedIndex !== -1) {
-        loadOrderToCart(filteredPendingBills[pendingSelectedIndex]);
-        if (searchInputRef.current) searchInputRef.current.focus();
+        handleQuickPrintBill(filteredPendingBills[pendingSelectedIndex]);
       }
     } else if (e.key === 'Delete') {
       e.preventDefault();
