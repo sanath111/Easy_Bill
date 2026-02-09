@@ -9,7 +9,6 @@ const SettingsPage = () => {
     hotel_name: '',
     hotel_address: '',
     printer_name: '',
-    enable_tables: 'true',
     
     // Bill Config
     paper_size: '80mm',
@@ -54,11 +53,9 @@ const SettingsPage = () => {
   
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
-  const [tables, setTables] = useState<any[]>([]);
   const [printers, setPrinters] = useState<any[]>([]);
   
   const [newItem, setNewItem] = useState({ name: '', price: '', category_id: '' });
-  const [newTable, setNewTable] = useState({ name: '', capacity: '' });
   const [newCategory, setNewCategory] = useState('');
 
   const fontSizes = ['8px', '9px', '10px', '11px', '12px', '14px', '16px', '18px', '20px', '22px', '24px', '28px', '32px', '36px'];
@@ -82,8 +79,6 @@ const SettingsPage = () => {
     setMenuItems(items);
     const cats = await window.api.getCategories();
     setCategories(cats);
-    const t = await window.api.getTables();
-    setTables(t);
     const p = await window.api.getPrinters();
     setPrinters(p);
   };
@@ -120,19 +115,6 @@ const SettingsPage = () => {
 
   const handleDeleteItem = async (id: number) => {
     await window.api.deleteMenuItem(id);
-    loadData();
-  };
-
-  const handleAddTable = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTable.name || !newTable.capacity) return;
-    await window.api.addTable({ ...newTable, capacity: parseInt(newTable.capacity) });
-    setNewTable({ name: '', capacity: '' });
-    loadData();
-  };
-
-  const handleDeleteTable = async (id: number) => {
-    await window.api.deleteTable(id);
     loadData();
   };
 
@@ -339,41 +321,12 @@ const SettingsPage = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">FSSAI Number</label>
                 <input type="text" className="w-full p-2 border rounded-md" value={settings.fssai_number || ''} onChange={e => setSettings({...settings, fssai_number: e.target.value})} />
               </div>
-              <div className="flex items-center mt-6">
-                <input type="checkbox" id="enableTables" className="w-4 h-4" checked={settings.enable_tables === 'true'} onChange={e => setSettings({...settings, enable_tables: e.target.checked ? 'true' : 'false'})} />
-                <label htmlFor="enableTables" className="ml-2 text-sm font-medium text-gray-700">Enable Table Management</label>
-              </div>
-            </div>
-            <button onClick={handleSaveSettings} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Settings</button>
-          </div>
-
-          {/* Table Management */}
-          {settings.enable_tables === 'true' && (
-            <div className="bg-white p-6 rounded-lg shadow-md">
-              <h2 className="text-xl font-bold mb-4">Table Management</h2>
-              <form onSubmit={handleAddTable} className="flex gap-4 mb-6 items-end">
-                <div className="flex-1">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Table Name</label>
-                  <input type="text" className="w-full p-2 border rounded-md" value={newTable.name} onChange={e => setNewTable({...newTable, name: e.target.value})} placeholder="e.g. Table 5" />
-                </div>
-                <div className="w-32">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Capacity</label>
-                  <input type="number" className="w-full p-2 border rounded-md" value={newTable.capacity} onChange={e => setNewTable({...newTable, capacity: e.target.value})} placeholder="4" />
-                </div>
-                <button type="submit" className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 h-[42px]">Add Table</button>
-              </form>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {tables.map(table => (
-                  <div key={table.id} className="border p-3 rounded flex justify-between items-center bg-gray-50">
-                    <div><p className="font-semibold">{table.name}</p><p className="text-xs text-gray-500">Cap: {table.capacity}</p></div>
-                    <button onClick={() => handleDeleteTable(table.id)} className="text-red-500 hover:text-red-700">×</button>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Category Management */}
+                        </div>
+                        <button onClick={handleSaveSettings} className="mt-4 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Save Settings</button>
+                      </div>
+            
+                      {/* Category Management */}
+            
           <div className="bg-white p-6 rounded-lg shadow-md">
             <h2 className="text-xl font-bold mb-4">Category Management</h2>
             <form onSubmit={handleAddCategory} className="flex gap-4 mb-6 items-end">

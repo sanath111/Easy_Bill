@@ -6,9 +6,6 @@ const Billing = () => {
   const { showToast } = useToast();
   const [menuItems, setMenuItems] = useState<any[]>([]);
   const [cart, setCart] = useState<any[]>([]);
-  const [selectedTable, setSelectedTable] = useState<number | null>(null);
-  const [tables, setTables] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>({});
   const [currentOrderId, setCurrentOrderId] = useState<number | null>(null);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,12 +43,6 @@ const Billing = () => {
       setMenuItems(items);
       setFilteredItems(items);
       
-      const t = await window.api.getTables();
-      setTables(t);
-      
-      const s = await window.api.getSettings();
-      setSettings(s);
-
       loadPendingBills();
     };
     loadData();
@@ -72,38 +63,14 @@ const Billing = () => {
     } else {
       const lower = pendingSearchQuery.toLowerCase();
       const filtered = pendingBills.filter(order => 
-        (order.table_name && order.table_name.toLowerCase().includes(lower)) ||
         order.id.toString().includes(lower) ||
+        (order.table_id && order.table_id.toString().includes(lower)) ||
         (order.table_id === null && "takeaway".includes(lower))
       );
       setFilteredPendingBills(filtered);
     }
     setPendingSelectedIndex(-1); // Reset selection on search change
   }, [pendingSearchQuery, pendingBills]);
-
-  // Logic: Auto-load order ONLY for specific tables.
-  useEffect(() => {
-    const loadTableOrder = async () => {
-      if (selectedTable && selectedTable > 0) {
-        const order = await window.api.getOpenOrder(selectedTable);
-        if (order) {
-          loadOrderToCart(order);
-        } else {
-          setCurrentOrderId(null);
-          setCart([]);
-        }
-      }
-    };
-    
-    // Only verify table order if we aren't already working on a specific order ID loaded from pending
-    if (selectedTable && !currentOrderId) {
-        loadTableOrder();
-    } else if (selectedTable && currentOrderId) {
-        // If we have an order ID, double check it matches table if table switched? 
-        // Actually, if user manually switches table dropdown, we should probably reset or check.
-        // For simplicity, let's assume if currentOrderId is set, we are in "Edit Mode"
-    }
-  }, [selectedTable]);
 
   useEffect(() => {
     if (!searchQuery) {
@@ -112,8 +79,7 @@ const Billing = () => {
     } else {
       const lowerQuery = searchQuery.toLowerCase();
       const filtered = menuItems.filter(item => 
-        item.name.toLowerCase().includes(lowerQuery) || 
-        (item.category_name && item.category_name.toLowerCase().includes(lowerQuery))
+        item.name.toLowerCase().startsWith(lowerQuery)
       );
       setFilteredItems(filtered);
       setSelectedIndex(0);
@@ -154,19 +120,6 @@ const Billing = () => {
     }
   }, [showQuantityPopup, showTablePopup, showDeletePopup]);
 
-  const handleTableChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const val = e.target.value;
-    const newTableId = val === '' ? null : Number(val);
-    
-    if (newTableId === 0 || newTableId === null) {
-      setCurrentOrderId(null);
-      setCart([]);
-    }
-    
-    setSelectedTable(newTableId);
-    // Trigger reload if table has existing order is handled by useEffect
-  };
-
   const initiateAddToCart = (item: any) => {
     setPendingItem(item);
     setQuantity(1);
@@ -200,16 +153,13 @@ const Billing = () => {
 
   const refreshAfterAction = async () => {
     setCart([]);
-    setSelectedTable(null);
     setCurrentOrderId(null);
     
-    const t = await window.api.getTables();
-    setTables(t);
     loadPendingBills();
     if (searchInputRef.current) searchInputRef.current.focus();
   };
 
-  const handleSave = async () => {
+  const handleSave = async (tableId: number | null = null) => {
     try {
       if (cart.length === 0) {
           showToast('Cart is empty', 'error');
@@ -220,14 +170,13 @@ const Billing = () => {
         await window.api.saveOrder({
           orderId: currentOrderId,
           items: cart,
-          tableId: selectedTable === 0 ? null : selectedTable
+          tableId: tableId
         });
         
-        // Find the order in pending list to get its token number
         const currentOrder = pendingBills.find(o => o.id === currentOrderId);
         await window.api.printBill({ 
           items: cart, 
-          tableId: selectedTable, 
+          tableId: tableId, 
           type: 'KOT', 
           total: 0,
           tokenNumber: currentOrder?.token_number 
@@ -237,27 +186,21 @@ const Billing = () => {
         return;
       }
 
-      if (selectedTable && selectedTable > 0) {
-        const order = await window.api.createOrder(selectedTable);
-        await window.api.saveOrder({
-          orderId: order.id,
-          items: cart,
-          tableId: selectedTable
-        });
-        await window.api.printBill({ 
-          items: cart, 
-          tableId: selectedTable, 
-          type: 'KOT', 
-          total: 0,
-          tokenNumber: order.token_number 
-        });
-        showToast('Order created & KOT printed', 'success');
-        refreshAfterAction();
-        return;
-      }
-
-      setTableInput('0');
-      setShowTablePopup(true);
+      const order = await window.api.createOrder(tableId);
+      await window.api.saveOrder({
+        orderId: order.id,
+        items: cart,
+        tableId: tableId
+      });
+      await window.api.printBill({ 
+        items: cart, 
+        tableId: tableId, 
+        type: 'KOT', 
+        total: 0,
+        tokenNumber: order.token_number 
+      });
+      showToast('Order created & KOT printed', 'success');
+      refreshAfterAction();
     } catch (error: any) {
       showToast('Error saving order: ' + error.message, 'error');
       console.error(error);
@@ -265,39 +208,9 @@ const Billing = () => {
   };
 
   const confirmTablePopup = async () => {
-    try {
-      const tableId = parseInt(tableInput);
-      
-      if (tableId !== 0) {
-        const tableExists = tables.find(t => t.id === tableId);
-        if (!tableExists) {
-          showToast('Table does not exist!', 'error');
-          return;
-        }
-      }
-
-      const order = await window.api.createOrder(tableId === 0 ? null : tableId);
-      
-      await window.api.saveOrder({
-        orderId: order.id,
-        items: cart,
-        tableId: tableId === 0 ? null : tableId
-      });
-
-      await window.api.printBill({ 
-        items: cart, 
-        tableId: tableId === 0 ? null : tableId, 
-        type: 'KOT', 
-        total: 0,
-        tokenNumber: order.token_number
-      });
-
-      setShowTablePopup(false);
-      showToast('Order created & KOT printed', 'success');
-      refreshAfterAction();
-    } catch (error: any) {
-      showToast('Error confirming order: ' + error.message, 'error');
-    }
+    const tableId = parseInt(tableInput);
+    setShowTablePopup(false);
+    await handleSave(tableId === 0 ? null : tableId);
   };
 
   const handlePrint = async () => {
@@ -307,18 +220,12 @@ const Billing = () => {
           return;
       }
 
-      if (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId) {
-        showToast('Please select a table or save order first', 'error');
-        return;
-      }
-      
       const total = calculateTotal();
       let orderId = currentOrderId;
-      const dbTableId = selectedTable === 0 ? null : selectedTable;
       let tokenNumber = null;
 
       if (!orderId) {
-        const order = await window.api.createOrder(dbTableId);
+        const order = await window.api.createOrder(null);
         orderId = order.id;
         tokenNumber = order.token_number;
       } else {
@@ -331,13 +238,13 @@ const Billing = () => {
         total: total,
         items: cart,
         paymentMethod: 'Cash',
-        tableId: dbTableId
+        tableId: null
       });
 
       const billData = {
         items: cart,
         total: total,
-        tableId: dbTableId,
+        tableId: null,
         billNumber: resultClose.billNumber,
         tokenNumber: tokenNumber
       };
@@ -345,7 +252,6 @@ const Billing = () => {
       const resultPrint = await window.api.printBill(billData);
       
       if (resultPrint.success) {
-        console.log('Bill printed successfully!');
         showToast('Bill printed successfully!', 'success');
         refreshAfterAction();
       } else {
@@ -403,7 +309,8 @@ const Billing = () => {
     // F4: Save / Print KOT
     if (e.key === 'F4') {
       e.preventDefault();
-      handleSave();
+      setTableInput('0');
+      setShowTablePopup(true);
       return;
     }
 
@@ -435,7 +342,8 @@ const Billing = () => {
         if (selectedIndex !== -1 && filteredItems.length > 0) {
           initiateAddToCart(filteredItems[selectedIndex]);
         } else if (searchQuery === '' && cart.length > 0) {
-          handleSave(); // Enter on empty search saves/prints KOT
+          setTableInput('0');
+          setShowTablePopup(true);
         }
       }
     }
@@ -525,7 +433,6 @@ const Billing = () => {
 
     setCurrentOrderId(order.id);
     setCart(normalizedItems);
-    setSelectedTable(order.table_id === null ? 0 : order.table_id);
   };
 
   return (
@@ -673,7 +580,7 @@ const Billing = () => {
               placeholder="Search item..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              disabled={showQuantityPopup || showTablePopup || showDeletePopup}
+              disabled={showQuantityPopup || showDeletePopup}
             />
             {searchQuery === '' && cart.length > 0 && (
               <div className="absolute right-3 top-3 text-gray-500 text-xs font-bold">
@@ -766,7 +673,7 @@ const Billing = () => {
                             : 'hover:bg-gray-200'
                       }`}
                     >
-                      <td className="p-2 font-bold">{order.table_name || 'TKWY'}</td>
+                      <td className="p-2 font-bold">{order.table_id || 'TKWY'}</td>
                       <td className="p-2">#{order.id}</td>
                       <td className="p-2">{order.items.length}</td>
                       <td className="p-2 font-bold text-right">₹{order.total_amount.toFixed(2)}</td>
@@ -796,25 +703,6 @@ const Billing = () => {
             {currentOrderId && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">#{currentOrderId}</span>}
         </h2>
         
-        {settings.enable_tables === 'true' && (
-          <div className="mb-3 flex-shrink-0">
-            <select 
-              className="w-full p-2 border border-gray-400 bg-gray-50 text-sm font-mono focus:outline-none focus:border-black font-bold"
-              value={selectedTable === null ? '' : selectedTable}
-              onChange={handleTableChange}
-              disabled={showQuantityPopup || showTablePopup || showDeletePopup}
-            >
-              <option value="">Select Table...</option>
-              <option value="0">Takeaway</option>
-              {tables.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.name} {t.status === 'occupied' ? '(Occupied)' : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
         <div className="flex-1 overflow-y-auto mb-3 border border-gray-200 bg-gray-50 p-2">
           {cart.length === 0 ? (
             <p className="text-gray-400 text-center mt-10 font-mono text-sm">Cart is empty</p>
@@ -838,7 +726,7 @@ const Billing = () => {
                       <button 
                         onClick={() => removeFromCart(item.id)}
                         className="text-gray-400 hover:text-red-600 font-bold px-1 transition-colors"
-                        disabled={showQuantityPopup || showTablePopup || showDeletePopup}
+                        disabled={showQuantityPopup || showDeletePopup}
                       >
                         ×
                       </button>
@@ -858,8 +746,8 @@ const Billing = () => {
           
           <div className="grid grid-cols-1 gap-2">
              <button 
-              onClick={handleSave}
-              disabled={cart.length === 0 || showQuantityPopup || showTablePopup || showDeletePopup}
+              onClick={() => { setTableInput('0'); setShowTablePopup(true); }}
+              disabled={cart.length === 0 || showQuantityPopup || showDeletePopup}
               className="w-full py-3 border border-black bg-gray-200 text-black hover:bg-gray-300 disabled:bg-gray-100 disabled:text-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
               <span className="flex items-center gap-2"><Save size={18} /> Save & Print KOT</span>
@@ -867,7 +755,7 @@ const Billing = () => {
             </button>
             <button 
               onClick={handlePrint}
-              disabled={cart.length === 0 || (settings.enable_tables === 'true' && selectedTable === null && !currentOrderId) || showDeletePopup}
+              disabled={cart.length === 0 || showDeletePopup}
               className="w-full py-3 border border-black bg-black text-white hover:bg-gray-800 disabled:bg-gray-400 disabled:border-gray-400 font-bold uppercase text-sm flex justify-between px-4 items-center group transition-all"
             >
                <span className="flex items-center gap-2"><Printer size={18} /> Print Bill</span>

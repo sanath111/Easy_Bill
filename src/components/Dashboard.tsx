@@ -1,54 +1,71 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Receipt, FileText, Settings as SettingsIcon } from 'lucide-react';
 
 const Dashboard = () => {
-  const [tables, setTables] = useState<any[]>([]);
-  const [settings, setSettings] = useState<any>({});
+  const [stats, setStats] = useState({ orders: 0, revenue: 0 });
 
   useEffect(() => {
     const loadData = async () => {
-      const t = await window.api.getTables();
-      setTables(t);
-      const s = await window.api.getSettings();
-      setSettings(s);
+      const today = new Date().toISOString().split('T')[0];
+      const report = await window.api.getSalesReport({ startDate: today, endDate: today });
+      setStats({
+        orders: report?.total_orders || 0,
+        revenue: report?.total_revenue || 0
+      });
     };
     loadData();
   }, []);
 
   return (
-    <div>
-      <h2 className="text-2xl font-bold mb-6">Dashboard</h2>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-3xl font-bold text-gray-800">Welcome to Easy Bill</h2>
+        <p className="text-gray-600 mt-2">Manage your restaurant operations efficiently.</p>
+      </div>
       
-      {settings.enable_tables === 'true' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {tables.map((table) => (
-            <div 
-              key={table.id} 
-              className={`p-6 rounded-lg shadow-md ${
-                table.status === 'available' ? 'bg-green-100 border-green-200' : 'bg-red-100 border-red-200'
-              } border`}
-            >
-              <h3 className="text-xl font-semibold mb-2">{table.name}</h3>
-              <p className="text-gray-600 mb-4">Capacity: {table.capacity}</p>
-              <div className="flex justify-between items-center">
-                <span className={`px-2 py-1 rounded text-sm ${
-                  table.status === 'available' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'
-                }`}>
-                  {table.status.toUpperCase()}
-                </span>
-              </div>
-            </div>
-          ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today's Orders</p>
+          <p className="text-3xl font-bold text-gray-900 mt-1">{stats.orders}</p>
         </div>
-      ) : (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-          <p className="text-gray-600">Table management is currently disabled. You can enable it in Settings.</p>
-          <p className="mt-4 text-lg font-semibold">Quick Actions</p>
-          <div className="mt-2 flex gap-4">
-             <Link to="/billing" className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Go to Billing</Link>
+        <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
+          <p className="text-sm font-medium text-gray-500 uppercase tracking-wider">Today's Revenue</p>
+          <p className="text-3xl font-bold text-blue-600 mt-1">₹ {stats.revenue.toFixed(2)}</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Link to="/billing" className="flex items-center p-4 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors shadow-md group">
+          <div className="p-3 bg-white/20 rounded-lg mr-4">
+            <Receipt size={24} />
           </div>
-        </div>
-      )}
+          <div>
+            <p className="font-bold">New Billing</p>
+            <p className="text-xs text-blue-100">Create new KOT/Bill</p>
+          </div>
+        </Link>
+
+        <Link to="/reports" className="flex items-center p-4 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors shadow-sm group">
+          <div className="p-3 bg-gray-100 rounded-lg mr-4 text-gray-600 group-hover:bg-gray-200">
+            <FileText size={24} />
+          </div>
+          <div>
+            <p className="font-bold">Reports</p>
+            <p className="text-xs text-gray-500">View sales analytics</p>
+          </div>
+        </Link>
+
+        <Link to="/settings" className="flex items-center p-4 bg-white border border-gray-300 text-gray-800 rounded-lg hover:bg-gray-50 transition-colors shadow-sm group">
+          <div className="p-3 bg-gray-100 rounded-lg mr-4 text-gray-600 group-hover:bg-gray-200">
+            <SettingsIcon size={24} />
+          </div>
+          <div>
+            <p className="font-bold">Settings</p>
+            <p className="text-xs text-gray-500">Configure app & printers</p>
+          </div>
+        </Link>
+      </div>
     </div>
   );
 };
