@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useToast } from '../context/ToastContext';
-import { Search, RotateCcw, Printer, Save, Trash2, AlertTriangle } from 'lucide-react';
+import { Search, RotateCcw, Printer, Save, Trash2, AlertTriangle, X } from 'lucide-react';
 
 const Billing = () => {
   const { showToast } = useToast();
@@ -185,6 +185,15 @@ const Billing = () => {
     } else {
       if (searchInputRef.current) searchInputRef.current.focus();
     }
+  };
+
+  const handleClearCurrentBill = () => {
+    setCart([]);
+    setOriginalItems([]);
+    setCurrentOrderId(null);
+    setCurrentTokenNumber(null);
+    setPendingSelectedIndex(-1);
+    if (searchInputRef.current) searchInputRef.current.focus();
   };
 
   const handleQuickPrintBill = async (order: any) => {
@@ -835,7 +844,18 @@ const Billing = () => {
       {/* Right Column: Cart & Billing */}
       <div className="w-96 bg-white border border-gray-400 p-4 flex flex-col overflow-hidden shadow-sm">
         <h2 className="text-lg font-bold mb-3 text-black uppercase tracking-wide border-b border-gray-300 pb-2 flex-shrink-0 flex justify-between items-center">
-            <span>Current Bill</span>
+            <div className="flex items-center gap-2">
+              <span>Current Bill</span>
+              {(currentOrderId || cart.length > 0) && (
+                <button 
+                  onClick={handleClearCurrentBill}
+                  className="p-1 hover:bg-gray-100 rounded-full text-gray-400 hover:text-red-600 transition-colors"
+                  title="Clear current bill"
+                >
+                  <X size={16} />
+                </button>
+              )}
+            </div>
             {currentTokenNumber && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">#{currentTokenNumber}</span>}
         </h2>
         
